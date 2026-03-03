@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>旅遊作戰儀表板 Pro</title>
+
+<style>
+:root{
+  --main:#2563eb;
+  --bg:#f3f4f6;
+}
+body{
+  margin:0;
+  font-family:"Microsoft JhengHei",sans-serif;
+  background:var(--bg);
+  color:#111;
+}
+.container{
+  max-width:900px;
+  margin:auto;
+  padding:16px;
+}
+.header{
+  text-align:center;
+  margin-bottom:20px;
+}
+.card{
+  background:white;
+  border-radius:14px;
+  padding:16px;
+  margin-bottom:16px;
+  box-shadow:0 6px 18px rgba(0,0,0,.08);
+}
+h2{
+  border-left:5px solid var(--main);
+  padding-left:10px;
+  margin-top:0;
+}
+.tag{
+  display:inline-block;
+  background:#eef2ff;
+  padding:4px 10px;
+  border-radius:999px;
+  margin:4px 4px 0 0;
+  font-size:13px;
+}
+.timeline-item{
+  padding:10px 0;
+  border-bottom:1px dashed #ddd;
+  line-height:1.5;
+}
+.time{
+  font-weight:bold;
+  color:#2563eb;
+  margin-right:6px;
+}
+.countdown{
+  font-size:20px;
+  color:#dc2626;
+  font-weight:bold;
+}
+.collapsible{
+  cursor:pointer;
+  padding:10px;
+  background:#f1f5f9;
+  border-radius:8px;
+  margin-top:8px;
+}
+.content{
+  display:none;
+  padding-top:10px;
+}
+.footer-tip{
+  font-size:12px;
+  color:#666;
+  text-align:center;
+  margin-top:20px;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<div class="header">
+<h1>✈️ 沖繩自由行作戰儀表板</h1>
+<div id="flightCountdown" class="countdown"></div>
+</div>
+
+<!-- 航班 -->
+<div class="card">
+<h2>✈️ 航班資訊</h2>
+<p>去程：台北 → 那霸｜3/14 14:45｜VZ568（泰越捷）</p>
+<p>回程：那霸 → 台北｜3/17 09:45｜台灣虎航</p>
+<p style="color:#dc2626;">⚠️ 建議 07:30 從飯店出發</p>
+</div>
+
+<!-- 飯店 -->
+<div class="card">
+<h2>🏨 住宿基地</h2>
+<p><b>Okinawa Hinode Resort and Hot Spring Hotel</b></p>
+<p>3 Chome-18-33 Makishi, Naha</p>
+<div>
+<span class="tag">免費拉麵</span>
+<span class="tag">酒精暢飲</span>
+<span class="tag">溫泉</span>
+<span class="tag">牧志站生活圈</span>
+</div>
+</div>
+
+<!-- Day 1 -->
+<div class="card">
+<div class="collapsible">📅 Day 1｜落地適應日（點我展開）</div>
+<div class="content">
+<div class="timeline-item"><span class="time">—</span>🛬 抵達那霸 → 前往飯店</div>
+<div class="timeline-item"><span class="time">—</span>🛒 第一牧志公設市場</div>
+<div class="timeline-item"><span class="time">—</span>🥩 晚餐：燒肉 本部牧場 那霸店</div>
+</div>
+</div>
+
+<!-- Day 2 -->
+<div class="card">
+<div class="collapsible">📅 Day 2｜北部重裝日（點我展開）</div>
+<div class="content">
+<div class="timeline-item"><span class="time">—</span>🐋 沖繩美麗海水族館</div>
+<div class="timeline-item"><span class="time">—</span>🌿 萬座毛</div>
+<div class="timeline-item"><span class="time">—</span>🚌 一日遊巴士</div>
+</div>
+</div>
+
+<!-- Day 3（已統一格式） -->
+<div class="card">
+<div class="collapsible">📅 Day 3｜市區購物日（點我展開）</div>
+<div class="content">
+<div class="timeline-item"><span class="time">09:00</span>⛩ 波上宮／波之上海灘（計程車）</div>
+<div class="timeline-item"><span class="time">10:30</span>🌿 福州園（步行）</div>
+<div class="timeline-item"><span class="time">11:30</span>🛍 前往 PARCO CITY</div>
+<div class="timeline-item"><span class="time">12:30</span>🍽 購物＋午餐</div>
+<div class="timeline-item"><span class="time">17:00</span>↩ 返回市區</div>
+<div class="timeline-item"><span class="time">18:30</span>🍜 國際通晚餐</div>
+</div>
+</div>
+
+<!-- 美食 -->
+<div class="card">
+<h2>🍜 美食備案庫</h2>
+<ul>
+<li>美里茶坊（首里城）</li>
+<li>Calbee+（國際通）</li>
+<li>三矢本舖（萬座毛）</li>
+<li>沖縄炭火焼肉ぶち久茂地</li>
+<li>烤肉五苑 古島站前</li>
+</ul>
+</div>
+
+<div class="footer-tip">
+資料結構已統一，已可進入通用化階段
+</div>
+
+</div>
+
+<script>
+// ===== 航班倒數 =====
+const flightTime = new Date("2026-03-17T09:45:00+09:00");
+
+function updateCountdown(){
+  const now = new Date();
+  const diff = flightTime - now;
+
+  if(diff <= 0){
+    document.getElementById("flightCountdown").innerText = "✈️ 已起飛";
+    return;
+  }
+
+  const h = Math.floor(diff/1000/60/60);
+  const m = Math.floor((diff/1000/60)%60);
+
+  document.getElementById("flightCountdown").innerText =
+    `⏳ 距離回程航班：${h} 小時 ${m} 分`;
+}
+setInterval(updateCountdown,1000);
+updateCountdown();
+
+// ===== 收合 =====
+document.querySelectorAll(".collapsible").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    const content = btn.nextElementSibling;
+    content.style.display =
+      content.style.display === "block" ? "none" : "block";
+  });
+});
+</script>
+
+</body>
+</html>
