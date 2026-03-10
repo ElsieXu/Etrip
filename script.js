@@ -35,7 +35,7 @@ const loading=document.getElementById("loading")
 loading.innerText="AI解析中..."
 
 const res=await fetch(
-"http://127.0.0.1:5000/parse",
+"https://etrip.onrender.com/parse",
 {
 method:"POST",
 headers:{
@@ -264,7 +264,7 @@ return
 
 document.getElementById("aiStatus").innerText="AI解析中..."
 
-const res=await fetch("http://127.0.0.1:5000/extract_places",{
+const res=await fetch("https://etrip.onrender.com/extract_places",{
 
 method:"POST",
 
@@ -300,5 +300,6 @@ saveTrip()
 renderBackups()
 
 document.getElementById("aiStatus").innerText="完成"
+
 
 }
