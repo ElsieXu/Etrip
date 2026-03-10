@@ -95,33 +95,44 @@ async function extractPlaces(){
  try{
 
   const res=await fetch(
-  "https://etrip.onrender.com/extract_places",
-  {
-   method:"POST",
-   headers:{
-    "Content-Type":"application/json"
-   },
-   body:JSON.stringify({text:text})
-  })
+   "https://etrip.onrender.com/extract_places",
+   {
+    method:"POST",
+    headers:{
+     "Content-Type":"application/json"
+    },
+    body:JSON.stringify({text:text})
+   }
+  )
 
   const data=await res.json()
 
   let raw=data.places
 
+  // 清理AI格式
   raw=raw.replace(/```json/g,"")
   raw=raw.replace(/```/g,"")
+  raw=raw.trim()
+
+  console.log("AI回傳:",raw)
 
   let places=[]
 
   try{
    places=JSON.parse(raw)
   }catch(e){
-   console.log("AI格式錯誤",raw)
-   alert("AI回傳格式錯誤")
-   return
+
+   // 如果 JSON 壞掉就強制拆字串
+   places=raw
+    .replace("[","")
+    .replace("]","")
+    .split(",")
+    .map(p=>p.replace(/"/g,"").trim())
   }
 
   places.forEach(p=>{
+
+   if(!p) return
 
    tripData.backups.push({
     name:p,
@@ -139,7 +150,6 @@ async function extractPlaces(){
 
   console.error(e)
   status.innerText="API錯誤"
-  alert("API連線失敗")
 
  }
 
@@ -315,3 +325,4 @@ function deleteItem(dayIndex,itemIndex){
  renderTrip()
 
 }
+
