@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>AI Travel Notebook</title>
+
+<style>
+
+body{
+font-family:"Microsoft JhengHei";
+background:#f3f4f6;
+margin:0;
+}
+
+.container{
+max-width:900px;
+margin:auto;
+padding:16px;
+}
+
+.card{
+background:white;
+border-radius:12px;
+padding:16px;
+margin-bottom:16px;
+box-shadow:0 4px 12px rgba(0,0,0,0.1);
+}
+
+textarea{
+width:100%;
+height:160px;
+padding:10px;
+}
+
+button{
+margin:4px;
+padding:6px 10px;
+background:#2563eb;
+color:white;
+border:none;
+border-radius:6px;
+cursor:pointer;
+}
+
+.timeline-item{
+padding:6px 0;
+border-bottom:1px dashed #ddd;
+}
+
+.collapsible{
+background:#eef2ff;
+padding:10px;
+margin-top:10px;
+cursor:pointer;
+}
+
+.content{
+display:none;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="card">
+
+<h2>🤖 AI 行程解析</h2>
+
+<textarea id="rawInput"></textarea>
+
+<button onclick="parseTrip()">AI解析</button>
+
+<div id="loading"></div>
+
+</div>
+
+<div id="result"></div>
+
+<div class="card">
+
+<h2>🤖 AI抽取景點</h2>
+
+<textarea id="aiText" placeholder="貼IG / FB / 部落格遊記"></textarea>
+
+<button onclick="extractPlaces()">AI抽取景點</button>
+
+<div id="aiStatus"></div>
+
+</div>
+
+<div class="card">
+
+<h2>🧩 備案池</h2>
+
+<input id="backupInput" placeholder="輸入餐廳或景點">
+
+<button onclick="addBackup()">新增</button>
+
+<div id="backupList"></div>
+
+</div>
+
+</div>
+
+<script src="script.js"></script>
+
+</body>
+</html>
