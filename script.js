@@ -341,20 +341,40 @@ function getFlightCountdown(){
 
  if(!tripData.flight.depart) return ""
 
- const raw = tripData.flight.depart
+ const raw = tripData.flight.depart.trim()
 
- const year = new Date().getFullYear()
+ try{
 
- const target = new Date(`${year}/${raw}`)
- const now = new Date()
+  const [datePart,timePart] = raw.split(" ")
 
- const diff = target - now
+  const [month,day] = datePart.split("/")
+  const [hour,minute] = timePart.split(":")
 
- if(diff <= 0) return "航班已出發"
+  const year = new Date().getFullYear()
 
- const hours = Math.floor(diff/(1000*60*60))
- const mins = Math.floor((diff%(1000*60*60))/(1000*60))
+  const target = new Date(
+   year,
+   parseInt(month)-1,
+   parseInt(day),
+   parseInt(hour),
+   parseInt(minute)
+  )
 
- return `⏳ 距離出發航班：${hours}小時 ${mins}分`
+  const now = new Date()
+
+  const diff = target - now
+
+  if(diff <= 0) return "航班已出發"
+
+  const hours = Math.floor(diff/(1000*60*60))
+  const mins = Math.floor((diff%(1000*60*60))/(1000*60))
+
+  return `⏳ 距離出發航班：${hours}小時 ${mins}分`
+
+ }catch(e){
+
+  return ""
+
+ }
 
 }
