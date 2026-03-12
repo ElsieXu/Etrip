@@ -347,15 +347,26 @@ function getFlightCountdown(){
 
   const [datePart,timePart] = raw.split(" ")
 
-  const [month,day] = datePart.split("/")
-  const [hour,minute] = timePart.split(":")
+  const parts = datePart.split("/")
 
-  const year = new Date().getFullYear()
+  let year,month,day
+
+  if(parts.length === 3){
+   year = parseInt(parts[0])
+   month = parseInt(parts[1])
+   day = parseInt(parts[2])
+  }else{
+   year = new Date().getFullYear()
+   month = parseInt(parts[0])
+   day = parseInt(parts[1])
+  }
+
+  const [hour,minute] = timePart.split(":")
 
   const target = new Date(
    year,
-   parseInt(month)-1,
-   parseInt(day),
+   month-1,
+   day,
    parseInt(hour),
    parseInt(minute)
   )
@@ -378,3 +389,4 @@ function getFlightCountdown(){
  }
 
 }
+
