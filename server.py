@@ -1,18 +1,20 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from openai import OpenAI
 from dotenv import load_dotenv
+import os
+import requests
+from bs4 import BeautifulSoup
+from openai import OpenAI
+
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
-import os
-from openai import OpenAI
-
 client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY")
 )
+
 # ===============================
 # 行程解析
 # ===============================
@@ -20,8 +22,8 @@ client = OpenAI(
 @app.route("/parse", methods=["POST"])
 def parse_trip():
 
-    data = request.json
-    text = data.get("text","")
+    data = request.json or {}
+    text = data.get("text", "")
 
     prompt = f"""
 你是旅行資料整理助手。
@@ -46,27 +48,25 @@ def parse_trip():
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[
-            {"role":"user","content":prompt}
-        ]
+        messages=[{"role": "user", "content": prompt}]
     )
 
     result = response.choices[0].message.content
 
     return jsonify({
-        "result":result
+        "result": result
     })
 
 
 # ===============================
-# AI 抽取景點 / 餐廳
+# AI 抽取景點
 # ===============================
 
 @app.route("/extract_places", methods=["POST"])
 def extract_places():
 
-    data = request.json
-    text = data.get("text","")
+    data = request.json or {}
+    text = data.get("text", "")
 
     prompt = f"""
 從以下旅遊內容中找出所有景點、餐廳或商店名稱。
@@ -87,9 +87,65 @@ def extract_places():
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[
-            {"role":"user","content":prompt}
-        ]
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    result = response.choices[0].message.content
+
+    return jsonify({
+        "places": result
+    })
+
+
+# ===============================
+# URL 抽取景點
+# ===============================
+
+@app.route("/extract_url", methods=["POST"])
+def extract_url():
+
+    data = request.json or {}
+    url = data.get("text", "")
+
+    try:
+
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
+
+        r = requests.get(url, headers=headers, timeout=10)
+
+        soup = BeautifulSoup(r.text, "html.parser")
+
+        text = soup.get_text()
+
+        # 限制長度避免 token 爆炸
+        text = text[:6000]
+
+    except Exception as e:
+        print("URL抓取錯誤:", e)
+        return jsonify({"places": "[]"})
+
+    prompt = f"""
+從以下文章內容中找出所有景點、餐廳或商店名稱。
+
+只回傳 JSON 陣列，例如：
+
+[
+ "美里茶坊",
+ "Calbee+",
+ "三矢本舖"
+]
+
+不要解釋。
+
+內容：
+{text}
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}]
     )
 
     result = response.choices[0].message.content
@@ -102,5 +158,7 @@ def extract_places():
 # ===============================
 
 if __name__ == "__main__":
+
     port = int(os.environ.get("PORT", 5000))
+
     app.run(host="0.0.0.0", port=port)
