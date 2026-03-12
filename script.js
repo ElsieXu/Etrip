@@ -89,13 +89,19 @@ async function extractPlaces(){
   return
  }
 
+  let api="/extract_places"
+
+  if(text.startsWith("http")){
+ api="/extract_url"
+  }
+
  const status=document.getElementById("aiStatus")
  status.innerText="AI解析中..."
 
  try{
 
   const res=await fetch(
-   "https://etrip.onrender.com/extract_places",
+   "https://etrip.onrender.com"+api,
    {
     method:"POST",
     headers:{
@@ -164,8 +170,11 @@ function renderTrip(){
  html+=`
  <div class="card">
  <h2>✈️ 航班</h2>
- <p>${tripData.flight.depart||""}</p>
- <p>${tripData.flight.return||""}</p>
+
+<p style="color:#c0392b">${getFlightCountdown()}</p>
+
+<p>${tripData.flight.depart||""}</p>
+<p>${tripData.flight.return||""}</p>
  </div>
  `
 
@@ -326,3 +335,26 @@ function deleteItem(dayIndex,itemIndex){
 
 }
 
+// ===== 航班倒數 =====
+
+function getFlightCountdown(){
+
+ if(!tripData.flight.depart) return ""
+
+ const raw = tripData.flight.depart
+
+ const year = new Date().getFullYear()
+
+ const target = new Date(`${year}/${raw}`)
+ const now = new Date()
+
+ const diff = target - now
+
+ if(diff <= 0) return "航班已出發"
+
+ const hours = Math.floor(diff/(1000*60*60))
+ const mins = Math.floor((diff%(1000*60*60))/(1000*60))
+
+ return `⏳ 距離出發航班：${hours}小時 ${mins}分`
+
+}
