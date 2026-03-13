@@ -169,9 +169,11 @@ function renderTrip(){
 
  html+=`
  <div class="card">
- <h2>✈️ 航班</h2>
+ 
+<h2>✈️ 航班</h2>
 
 <p style="color:#c0392b">${getFlightCountdown()}</p>
+<p style="color:#16a34a">${getReturnCountdown()}</p>
 
 <p>${tripData.flight.depart||""}</p>
 <p>${tripData.flight.return||""}</p>
@@ -200,9 +202,13 @@ function renderTrip(){
 
  <div class="timeline-item">
 
- ${item.time||""} ${item.text}
+${item.time||""} ${item.text}
 
- <button onclick="deleteItem(${dayIndex},${itemIndex})">刪除</button>
+${item.note ? `<div style="color:#666;font-size:13px">📝 ${item.note}</div>` : ""}
+
+<button onclick="editItem(${dayIndex},${itemIndex})">編輯</button>
+<button onclick="addNote(${dayIndex},${itemIndex})">備註</button>
+<button onclick="deleteItem(${dayIndex},${itemIndex})">刪除</button>
 
  </div>
 
@@ -335,7 +341,7 @@ function deleteItem(dayIndex,itemIndex){
 
 }
 
-// ===== 航班倒數 =====
+// ===== 出發航班倒數 =====
 
 function getFlightCountdown(){
 
@@ -387,6 +393,89 @@ function getFlightCountdown(){
   return ""
 
  }
+// ===== 回程航班倒數 =====
+}
+
+function getReturnCountdown(){
+
+ if(!tripData.flight.return) return ""
+
+ const raw = tripData.flight.return.trim()
+
+ try{
+
+  const [datePart,timePart] = raw.split(" ")
+
+  const parts = datePart.split("/")
+
+  let year,month,day
+
+  if(parts.length===3){
+   year=parseInt(parts[0])
+   month=parseInt(parts[1])
+   day=parseInt(parts[2])
+  }else{
+   year=new Date().getFullYear()
+   month=parseInt(parts[0])
+   day=parseInt(parts[1])
+  }
+
+  const [hour,minute]=timePart.split(":")
+
+  const target=new Date(
+   year,
+   month-1,
+   day,
+   parseInt(hour),
+   parseInt(minute)
+  )
+
+  const now=new Date()
+
+  const diff=target-now
+
+  if(diff<=0) return "已回程"
+
+  const hours=Math.floor(diff/(1000*60*60))
+  const mins=Math.floor((diff%(1000*60*60))/(1000*60))
+
+  return `🏠 距離回程航班：${hours}小時 ${mins}分`
+
+ }catch(e){
+  return ""
+ }
+
+}
+function editItem(dayIndex,itemIndex){
+
+ const item=tripData.days[dayIndex].items[itemIndex]
+
+ const text=prompt("修改內容",item.text)
+
+ if(text!==null){
+
+  item.text=text
+
+  saveTrip()
+  renderTrip()
+
+ }
 
 }
 
+function addNote(dayIndex,itemIndex){
+
+ const item=tripData.days[dayIndex].items[itemIndex]
+
+ const note=prompt("新增備註",item.note||"")
+
+ if(note!==null){
+
+  item.note=note
+
+  saveTrip()
+  renderTrip()
+
+ }
+
+}
