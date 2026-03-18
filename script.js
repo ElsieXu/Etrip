@@ -479,3 +479,91 @@ function addNote(dayIndex,itemIndex){
  }
 
 }
+
+function exportTxt(){
+
+ let text="✈️ AI Travel Notebook\n\n"
+
+ // 航班
+ text+="【航班】\n"
+ text+=`出發：${tripData.flight.depart||""}\n`
+ text+=`回程：${tripData.flight.return||""}\n\n`
+
+ // 飯店
+ text+="【住宿】\n"
+ text+=`${tripData.hotel.name||""}\n`
+ text+=`${tripData.hotel.address||""}\n\n`
+
+ // 行程
+ tripData.days.forEach(day=>{
+  text+=`【${day.title}】\n`
+
+  day.items.forEach(item=>{
+   text+=`${item.time||""} ${item.text}\n`
+
+   if(item.note){
+    text+=`  📝 ${item.note}\n`
+   }
+  })
+
+  text+="\n"
+ })
+
+ // 備案池
+ text+="【備案池】\n"
+
+ tripData.backups.forEach(b=>{
+  text+=`${b.name}\n`
+  text+=`${b.map}\n`
+ })
+
+ // 建立下載
+ const blob=new Blob([text],{type:"text/plain"})
+ const url=URL.createObjectURL(blob)
+
+ const a=document.createElement("a")
+ a.href=url
+ a.download="travel.txt"
+ a.click()
+
+ URL.revokeObjectURL(url)
+
+}
+
+function copyAll(){
+
+ let text="✈️ AI Travel Notebook\n\n"
+
+ text+="【航班】\n"
+ text+=`出發：${tripData.flight.depart||""}\n`
+ text+=`回程：${tripData.flight.return||""}\n\n`
+
+ text+="【住宿】\n"
+ text+=`${tripData.hotel.name||""}\n`
+ text+=`${tripData.hotel.address||""}\n\n`
+
+ tripData.days.forEach(day=>{
+  text+=`【${day.title}】\n`
+
+  day.items.forEach(item=>{
+   text+=`${item.time||""} ${item.text}\n`
+
+   if(item.note){
+    text+=`  📝 ${item.note}\n`
+   }
+  })
+
+  text+="\n"
+ })
+
+ text+="【備案池】\n"
+
+ tripData.backups.forEach(b=>{
+  text+=`${b.name}\n${b.map}\n`
+ })
+
+ navigator.clipboard.writeText(text)
+
+ alert("已複製到剪貼簿")
+
+}
