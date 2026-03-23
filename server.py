@@ -9,11 +9,23 @@ from openai import OpenAI
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+from flask_cors import CORS
+CORS(app, resources={
+    r"/*": {
+        "origins": "*"
+    }
+})
 
 client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY")
 )
+
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    return response
 
 # ===============================
 # 行程解析
@@ -154,6 +166,34 @@ def extract_url():
         "places": result
     })
 
+# ===============================
+# 地點轉座標
+# ===============================
+
+@app.route("/enrich_locations", methods=["POST"])
+def enrich_locations():
+
+    data = request.json or {}
+    places = data.get("places", [])
+
+    results = []
+
+    for p in places:
+        try:
+            url = f"https://maps.googleapis.com/maps/api/geocode/json?address={p}&key={os.getenv('GOOGLE_MAPS_API_KEY')}"
+            res = requests.get(url).json()
+
+            if res.get("results"):
+                loc = res["results"][0]["geometry"]["location"]
+                results.append({
+                    "name": p,
+                    "lat": loc["lat"],
+                    "lng": loc["lng"]
+                })
+        except Exception as e:
+            print("地點解析錯誤:", e)
+
+    return jsonify(results)
 
 # ===============================
 
@@ -162,3 +202,4 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
 
     app.run(host="0.0.0.0", port=port)
+
