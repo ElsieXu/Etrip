@@ -1,166 +1,3 @@
-let tripData={
- flight:{},
- hotel:{},
- days:[],
- backups:[]
-}
-
-// ===== localStorage =====
-
-function saveTrip(){
- localStorage.setItem("tripData",JSON.stringify(tripData))
-}
-
-function loadTrip(){
-
- const saved=localStorage.getItem("tripData")
-
- if(saved){
-  tripData=JSON.parse(saved)
-  renderTrip()
-  renderBackups()
- }
-
-}
-
-loadTrip()
-
-// ===== AI解析行程 =====
-
-async function parseTrip(){
-
- const rawText=document.getElementById("rawInput").value
- const loading=document.getElementById("loading")
-
- if(!rawText){
-  alert("請貼上行程")
-  return
- }
-
- loading.innerText="AI解析中..."
-
- const res=await fetch(
- "https://etrip.onrender.com/parse",
- {
-  method:"POST",
-  headers:{
-   "Content-Type":"application/json"
-  },
-  body:JSON.stringify({text:rawText})
- }
- )
-
- const data=await res.json()
-
- let aiText=data.result
-
- aiText=aiText.replace(/```json/g,"")
- aiText=aiText.replace(/```/g,"")
-
- let ai={}
-
- try{
-  ai=JSON.parse(aiText)
- }catch(e){
-  console.log(aiText)
-  alert("AI回傳格式錯誤")
-  return
- }
-
- tripData.flight=ai.flight||{}
- tripData.hotel=ai.hotel||{}
- tripData.days=ai.days||[]
-
- saveTrip()
- renderTrip()
-
- loading.innerText="完成"
-
-}
-
-// ===== AI抽取景點 =====
-
-async function extractPlaces(){
-
- const text=document.getElementById("aiText").value.trim()
-
- if(!text){
-  alert("請貼上內容")
-  return
- }
-
-  let api="/extract_places"
-
-  if(text.startsWith("http")){
- api="/extract_url"
-  }
-
- const status=document.getElementById("aiStatus")
- status.innerText="AI解析中..."
-
- try{
-
-  const res=await fetch(
-   "https://etrip.onrender.com"+api,
-   {
-    method:"POST",
-    headers:{
-     "Content-Type":"application/json"
-    },
-    body:JSON.stringify({text:text})
-   }
-  )
-
-  const data=await res.json()
-
-  let raw=data.places
-
-  // 清理AI格式
-  raw=raw.replace(/```json/g,"")
-  raw=raw.replace(/```/g,"")
-  raw=raw.trim()
-
-  console.log("AI回傳:",raw)
-
-  let places=[]
-
-  try{
-   places=JSON.parse(raw)
-  }catch(e){
-
-   // 如果 JSON 壞掉就強制拆字串
-   places=raw
-    .replace("[","")
-    .replace("]","")
-    .split(",")
-    .map(p=>p.replace(/"/g,"").trim())
-  }
-
-  places.forEach(p=>{
-
-   if(!p) return
-
-   tripData.backups.push({
-    name:p,
-    map:`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p)}`
-   })
-
-  })
-
-  saveTrip()
-  renderBackups()
-
-  status.innerText="完成"
-
- }catch(e){
-
-  console.error(e)
-  status.innerText="API錯誤"
-
- }
-
-}
-
 // ===== render 行程 =====
 
 function renderTrip(){
@@ -196,11 +33,11 @@ function renderTrip(){
 
  <div class="collapsible">${day.title}</div>
 
- <div class="content" id="day-${dayIndex}">
+ <div class="content sortable" id="day-${dayIndex}">
 
- ${day.items.map((item,itemIndex)=>`
+ ${(day.items || []).map((item,itemIndex)=>`
 
- <div class="timeline-item">
+ <div class="timeline-item" data-day="${dayIndex}" data-index="${itemIndex}">
 
 ${item.time||""} ${item.text}
 
@@ -223,7 +60,27 @@ ${item.note ? `<div style="color:#666;font-size:13px">📝 ${item.note}</div>` :
  })
 
  document.getElementById("result").innerHTML=html
+// ✅ 初始化拖曳（一定要在 render 之後）
+document.querySelectorAll(".sortable").forEach((el, dayIndex) => {
 
+ Sortable.create(el, {
+  animation: 150,
+
+  onEnd: function (evt) {
+
+   const list = tripData.days[dayIndex].items
+
+   const moved = list.splice(evt.oldIndex, 1)[0]
+   list.splice(evt.newIndex, 0, moved)
+
+   saveTrip()
+   renderTrip()
+
+  }
+
+ })
+
+})
 }
 
 // ===== 收合 =====
@@ -351,20 +208,30 @@ function getFlightCountdown(){
 
  try{
 
-  const [datePart,timePart] = raw.split(" ")
+// ✅ 新解析（支援航班代碼）
+ const parts = raw.split(" ")
 
-  const parts = datePart.split("/")
+ let datePart = ""
+ let timePart = ""
+
+ datePart = parts.find(p => p.includes("/")) || ""
+ timePart = parts.find(p => p.includes(":")) || ""
+
+ if(!datePart || !timePart) return "時間格式錯誤"
+
+// 再拆日期
+ const dateParts = datePart.split("/")
 
   let year,month,day
 
-  if(parts.length === 3){
-   year = parseInt(parts[0])
-   month = parseInt(parts[1])
-   day = parseInt(parts[2])
+  if(dateParts.length === 3){
+   year = parseInt(dateParts[0])
+   month = parseInt(dateParts[1])
+   day = parseInt(dateParts[2])
   }else{
    year = new Date().getFullYear()
-   month = parseInt(parts[0])
-   day = parseInt(parts[1])
+   month = parseInt(dateParts[0])
+   day = parseInt(dateParts[1])
   }
 
   const [hour,minute] = timePart.split(":")
@@ -393,9 +260,8 @@ function getFlightCountdown(){
   return ""
 
  }
-// ===== 回程航班倒數 =====
 }
-
+// ===== 回程航班倒數 =====
 function getReturnCountdown(){
 
  if(!tripData.flight.return) return ""
@@ -404,20 +270,28 @@ function getReturnCountdown(){
 
  try{
 
-  const [datePart,timePart] = raw.split(" ")
+// ✅ 新解析方式（支援航班代碼）
+const parts = raw.split(" ")
 
-  const parts = datePart.split("/")
+let datePart = ""
+let timePart = ""
+
+datePart = parts.find(p => p.includes("/")) || ""
+timePart = parts.find(p => p.includes(":")) || ""
+
+if(!datePart || !timePart) return ""
+const dateParts = datePart.split("/")
 
   let year,month,day
 
-  if(parts.length===3){
-   year=parseInt(parts[0])
-   month=parseInt(parts[1])
-   day=parseInt(parts[2])
+  if(dateParts.length === 3){
+   year = parseInt(dateParts[0])
+   month = parseInt(dateParts[1])
+   day = parseInt(dateParts[2])
   }else{
-   year=new Date().getFullYear()
-   month=parseInt(parts[0])
-   day=parseInt(parts[1])
+   year = new Date().getFullYear()
+   month = parseInt(dateParts[0])
+   day = parseInt(dateParts[1]) 
   }
 
   const [hour,minute]=timePart.split(":")
@@ -448,18 +322,21 @@ function getReturnCountdown(){
 }
 function editItem(dayIndex,itemIndex){
 
- const item=tripData.days[dayIndex].items[itemIndex]
+ const item = tripData.days[dayIndex].items[itemIndex]
 
- const text=prompt("修改內容",item.text)
+ // 👉 先改時間
+ const newTime = prompt("修改時間", item.time || "")
+ if(newTime === null) return
 
- if(text!==null){
+ // 👉 再改內容
+ const newText = prompt("修改內容", item.text || "")
+ if(newText === null) return
 
-  item.text=text
+ item.time = newTime
+ item.text = newText
 
-  saveTrip()
-  renderTrip()
-
- }
+ saveTrip()
+ renderTrip()
 
 }
 
@@ -475,95 +352,52 @@ function addNote(dayIndex,itemIndex){
 
   saveTrip()
   renderTrip()
-
  }
 
 }
 
-function exportTxt(){
+// ===== 下載成 .txt 檔案 =====
+function downloadTripTxt() {
+    // 1. 組合內容字串 (延用之前的邏輯，包含備註與備案)
+    let content = `=== Etrip 旅遊行程備份 ===\n\n`;
 
- let text="✈️ AI Travel Notebook\n\n"
+    content += `【✈️ 航班】\n- 出發：${tripData.flight.depart || "未設定"}\n- 回程：${tripData.flight.return || "未設定"}\n\n`;
+    content += `【🏨 住宿】\n- 名稱：${tripData.hotel.name || "未設定"}\n- 地址：${tripData.hotel.address || "未設定"}\n\n`;
 
- // 航班
- text+="【航班】\n"
- text+=`出發：${tripData.flight.depart||""}\n`
- text+=`回程：${tripData.flight.return||""}\n\n`
+    content += `【📅 詳細行程】\n`;
+    tripData.days.forEach(day => {
+        content += `--- ${day.title} ---\n`;
+        day.items.forEach(item => {
+            content += `• ${item.time || ""} ${item.text}`;
+            if (item.note) content += ` (備註：${item.note})`;
+            content += `\n`;
+        });
+        content += `\n`;
+    });
 
- // 飯店
- text+="【住宿】\n"
- text+=`${tripData.hotel.name||""}\n`
- text+=`${tripData.hotel.address||""}\n\n`
+    content += `【🧩 備案池】\n`;
+    tripData.backups.forEach(item => {
+        content += `- ${item.name} (${item.map})\n`;
+    });
 
- // 行程
- tripData.days.forEach(day=>{
-  text+=`【${day.title}】\n`
+    content += `\n產出時間：${new Date().toLocaleString()}`;
 
-  day.items.forEach(item=>{
-   text+=`${item.time||""} ${item.text}\n`
-
-   if(item.note){
-    text+=`  📝 ${item.note}\n`
-   }
-  })
-
-  text+="\n"
- })
-
- // 備案池
- text+="【備案池】\n"
-
- tripData.backups.forEach(b=>{
-  text+=`${b.name}\n`
-  text+=`${b.map}\n`
- })
-
- // 建立下載
- const blob=new Blob([text],{type:"text/plain"})
- const url=URL.createObjectURL(blob)
-
- const a=document.createElement("a")
- a.href=url
- a.download="travel.txt"
- a.click()
-
- URL.revokeObjectURL(url)
-
+    // 2. 建立 Blob 物件 (設定編碼為 UTF-8)
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    
+    // 3. 建立虛擬 <a> 標籤觸發下載
+    const link = document.createElement("a");
+    const fileName = `My_Trip_${new Date().toISOString().slice(0,10)}.txt`;
+    
+    link.href = URL.createObjectURL(blob);
+    link.download = fileName;
+    
+    // 4. 點擊並移除
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // 釋放記憶體
+    URL.revokeObjectURL(link.href);
 }
 
-function copyAll(){
-
- let text="✈️ AI Travel Notebook\n\n"
-
- text+="【航班】\n"
- text+=`出發：${tripData.flight.depart||""}\n`
- text+=`回程：${tripData.flight.return||""}\n\n`
-
- text+="【住宿】\n"
- text+=`${tripData.hotel.name||""}\n`
- text+=`${tripData.hotel.address||""}\n\n`
-
- tripData.days.forEach(day=>{
-  text+=`【${day.title}】\n`
-
-  day.items.forEach(item=>{
-   text+=`${item.time||""} ${item.text}\n`
-
-   if(item.note){
-    text+=`  📝 ${item.note}\n`
-   }
-  })
-
-  text+="\n"
- })
-
- text+="【備案池】\n"
-
- tripData.backups.forEach(b=>{
-  text+=`${b.name}\n${b.map}\n`
- })
-
- navigator.clipboard.writeText(text)
-
- alert("已複製到剪貼簿")
-
-}
