@@ -8,7 +8,7 @@
 <title>AI Travel Notebook</title>
 
 <style>
-  
+
 body{
 font-family:"Microsoft JhengHei";
 background:#f3f4f6;
@@ -71,8 +71,14 @@ display:none;
 
 <div class="card">
 
-<button onclick="exportTxt()">⬇️ 匯出TXT</button>
-<button onclick="copyAll()">📋 複製全部</button> 
+<div class="card" style="display: flex; gap: 10px;">
+    <button onclick="downloadTripTxt()" style="background:#1e40af; flex: 1;">
+        💾 下載行程 (.txt)
+    </button>
+    <button onclick="exportTrip()" style="background:#059669; flex: 1;">
+        📋 複製行程
+    </button>
+</div>
 
 <h2>🤖 AI 行程解析</h2>
 
@@ -112,7 +118,12 @@ display:none;
 
 </div>
 
+<script src="data.js"></script>
 <script src="script.js"></script>
+<script src="api.js"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+
 
 </body>
 
