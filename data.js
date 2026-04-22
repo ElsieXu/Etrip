@@ -1,6 +1,6 @@
 let tripData={
  flight:{},
- hotel:{},
+ hotel:[],//改為複數陣列
  days:[],
  backups:[]
 }

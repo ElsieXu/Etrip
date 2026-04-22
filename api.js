@@ -39,9 +39,10 @@ async function parseTrip(){
   return
  }
 
-// ✅ 新增：更新航班與飯店
-tripData.flight = ai.flight || {}
-tripData.hotel = ai.hotel || {}
+
+  // ✅ 修改：更新航班與複數飯店
+  tripData.flight = ai.flight || {}
+  tripData.hotels = ai.hotels || [] // 改為讀取 hotels
 
  // ✅ 建立資料
  tripData.days = (ai.days || []).map(day => {
@@ -111,9 +112,8 @@ async function extractPlaces(){
    }
   )
 
-  const data=await res.json()
-
-  let raw=data.places
+  const data = await res.json();
+  let raw = data.places;
 
   // 清理AI格式
   raw=raw.replace(/```json/g,"")
@@ -147,8 +147,21 @@ async function extractPlaces(){
 
   })
 
-  saveTrip()
-  renderBackups()
+  // ✅ 修正後的存入邏輯
+const enriched = await enrichLocations(places.map(p => ({ text: p })));
+
+enriched.forEach(p => {
+    if (!p.text) return;
+    tripData.backups.push({
+        name: p.text,
+        lat: p.lat || null, // 確保這裡有座標！
+        lng: p.lng || null,
+        map: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.text)}`
+    });
+});
+
+saveTrip();
+renderBackups();
 
   status.innerText="完成"
 
@@ -160,35 +173,34 @@ async function extractPlaces(){
  }
 
 }
-async function enrichLocations(items){
+async function enrichLocations(items) {
+  try {
+    const names = items.map(i => i.text);
+    const res = await fetch("https://etrip.onrender.com/enrich_locations", { // 記得確認改成本地端地址
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ places: names })
+    });
 
- try{
+    const data = await res.json();
 
-  const names = items.map(i => i.text)
-
-  const res = await fetch("https://etrip.onrender.com/enrich_locations", {
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json"
-    },
-    body: JSON.stringify({ places: names })
-  })
-
-  const data = await res.json()
-
-  items.forEach(item => {
-    const found = data.find(d => d.name === item.text)
-    if(found){
-      item.lat = found.lat
-      item.lng = found.lng
+    // ✅ 加強防呆：如果 data 不是陣列，就直接跳過不處理
+    if (!Array.isArray(data)) {
+      console.warn("後端回傳格式非陣列:", data);
+      return items;
     }
-  })
 
- }catch(e){
-  console.error("定位失敗", e)
- }
-
- return items
+    items.forEach(item => {
+      const found = data.find(d => d.name === item.text);
+      if (found) {
+        item.lat = found.lat;
+        item.lng = found.lng;
+      }
+    });
+  } catch (e) {
+    console.error("定位失敗", e);
+  }
+  return items;
 }
 
 function sortByDistance(items){

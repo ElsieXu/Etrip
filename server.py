@@ -46,7 +46,9 @@ def parse_trip():
 
 {{
  "flight":{{"depart":"","return":""}},
- "hotel":{{"name":"","address":""}},
+ "hotels":[  // 改為複數並使用陣列格式
+   {{"name":"","address":""}}
+ ],
  "days":[
    {{"title":"Day1","items":[{{"time":"","text":""}}]}}
  ]

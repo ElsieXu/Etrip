@@ -36,13 +36,14 @@ padding:10px;
 }
 
 button{
-margin:4px;
-padding:6px 10px;
-background:#2563eb;
-color:white;
-border:none;
-border-radius:6px;
-cursor:pointer;
+    margin: 4px;
+    padding: 8px 12px; /* 稍微增加內距 */
+    font-size: 14px;    /* 增加按鈕文字基礎大小 */
+    background:#2563eb;
+    color:white;
+    border:none;
+    border-radius:6px;
+    cursor:pointer;
 }
 
 .timeline-item{
@@ -59,6 +60,17 @@ cursor:pointer;
 
 .content{
 display:none;
+}
+
+button[onclick^="openDayMap"] {
+    background-color: #059669; /* 綠色，代表導航 */
+    font-weight: bold;
+    border-radius: 8px;
+    transition: background 0.3s;
+}
+
+button[onclick^="openDayMap"]:hover {
+    background-color: #047857;
 }
 
 </style>
@@ -118,12 +130,13 @@ display:none;
 
 </div>
 
-<script src="data.js"></script>
-<script src="script.js"></script>
-<script src="api.js"></script>
-
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 
+<script src="script.js"></script>
+
+<script src="data.js"></script>
+
+<script src="api.js"></script>
 
 </body>
 
