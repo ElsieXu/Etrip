@@ -1,143 +1,236 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Travel Notebook | 質感旅遊筆記</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --ring-color: rgba(37, 99, 235, 0.1);
+        }
 
-<title>AI Travel Notebook</title>
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
 
-<style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+        }
 
-body{
-font-family:"Microsoft JhengHei";
-background:#f3f4f6;
-margin:0;
-}
+        .container {
+            max-width: 720px; /* 稍微縮減寬度讓視覺更集中 */
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
 
-.container{
-max-width:900px;
-margin:auto;
-padding:16px;
-}
+        header {
+            margin-bottom: 32px;
+            text-align: left;
+        }
 
-.card{
-background:white;
-border-radius:12px;
-padding:16px;
-margin-bottom:16px;
-box-shadow:0 4px 12px rgba(0,0,0,0.1);
-}
+        h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
 
-textarea{
-width:100%;
-height:160px;
-padding:10px;
-}
+        /* 卡片設計 */
+        .card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 28px;
+            margin-bottom: 24px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+        }
 
-button{
-    margin: 4px;
-    padding: 8px 12px; /* 稍微增加內距 */
-    font-size: 14px;    /* 增加按鈕文字基礎大小 */
-    background:#2563eb;
-    color:white;
-    border:none;
-    border-radius:6px;
-    cursor:pointer;
-}
+        h2 {
+            font-size: 16px;
+            font-weight: 600;
+            margin: 0 0 16px 0;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
 
-.timeline-item{
-padding:6px 0;
-border-bottom:1px dashed #ddd;
-}
+        /* 輸入區域 */
+        textarea {
+            width: 100%;
+            height: 140px;
+            padding: 14px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            font-size: 15px;
+            font-family: inherit;
+            outline: none;
+            transition: all 0.2s ease;
+            background-color: #ffffff;
+            color: var(--text-main);
+            resize: vertical;
+        }
 
-.collapsible{
-background:#eef2ff;
-padding:10px;
-margin-top:10px;
-cursor:pointer;
-}
+        textarea:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px var(--ring-color);
+        }
 
-.content{
-display:none;
-}
+        input {
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            font-size: 15px;
+            outline: none;
+            transition: all 0.2s ease;
+            margin-bottom: 12px;
+        }
 
-button[onclick^="openDayMap"] {
-    background-color: #059669; /* 綠色，代表導航 */
-    font-weight: bold;
-    border-radius: 8px;
-    transition: background 0.3s;
-}
+        input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px var(--ring-color);
+        }
 
-button[onclick^="openDayMap"]:hover {
-    background-color: #047857;
-}
+        /* 按鈕組 */
+        .action-bar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
 
-</style>
+        button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+            width: 100%; /* 手機端預設滿版 */
+        }
 
+        button:active {
+            transform: scale(0.97);
+        }
+
+        /* 主按鈕 (AI解析/抽取) */
+        .btn-primary {
+            background-color: var(--primary);
+            color: white;
+            margin-top: 12px;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-hover);
+        }
+
+        /* 次按鈕 (下載/複製) */
+        .btn-secondary {
+            background-color: #eff6ff;
+            color: var(--primary);
+            flex: 1;
+            margin-top: 0;
+        }
+
+        .btn-secondary:hover {
+            background-color: #dbeafe;
+        }
+
+        /* 備案列表樣式 */
+        #backupList {
+            margin-top: 16px;
+        }
+
+        .timeline-item {
+            padding: 12px;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+        }
+
+        .timeline-item:last-child {
+            border-bottom: none;
+        }
+
+        /* 手機端微調 */
+        @media (max-width: 640px) {
+            .container {
+                padding: 24px 16px;
+            }
+            .card {
+                padding: 20px;
+            }
+            h1 {
+                font-size: 24px;
+            }
+        }
+
+        /* Loading 動畫優化 */
+        #loading, #aiStatus {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 8px;
+            text-align: center;
+        }
+    </style>
 </head>
 
 <body>
 
 <div class="container">
+    <header>
+        <h1>✈️ AI Travel Notebook</h1>
+    </header>
 
-<div class="card">
+    <div class="action-bar">
+        <button class="btn-secondary" onclick="downloadTripTxt()" style="background:#1e40af; color: white;">
+            💾 下載行程 (.txt)
+        </button>
+        <button class="btn-secondary" onclick="exportTrip()" style="background:#059669; color: white;">
+            📋 複製行程
+        </button>
+    </div>
 
-<div class="card" style="display: flex; gap: 10px;">
-    <button onclick="downloadTripTxt()" style="background:#1e40af; flex: 1;">
-        💾 下載行程 (.txt)
-    </button>
-    <button onclick="exportTrip()" style="background:#059669; flex: 1;">
-        📋 複製行程
-    </button>
-</div>
+    <div class="card">
+        <h2>🤖 AI 行程解析</h2>
+        <textarea id="rawInput" placeholder="請貼上你的混亂行程資訊..."></textarea>
+        <button class="btn-primary" onclick="parseTrip()">開始 AI 解析</button>
+        <div id="loading"></div>
+    </div>
 
-<h2>🤖 AI 行程解析</h2>
+    <div id="result"></div>
 
-<textarea id="rawInput"></textarea>
+    <div class="card">
+        <h2>🔍 AI 抽取景點</h2>
+        <textarea id="aiText" placeholder="貼上 IG / FB / 部落格遊記內容，AI 會自動分析並加入備案池..."></textarea>
+        <button class="btn-primary" onclick="extractPlaces()">分析並抽取景點</button>
+        <div id="aiStatus"></div>
+    </div>
 
-<button onclick="parseTrip()">AI解析</button>
-
-<div id="loading"></div>
-
-</div>
-
-<div id="result"></div>
-
-<div class="card">
-
-<h2>🤖 AI抽取景點</h2>
-
-<textarea id="aiText" placeholder="貼IG / FB /部落格遊記的文字內容，AI會自動分析內容，並加入備案池"></textarea>
-
-<button onclick="extractPlaces()">AI抽取景點</button>
-
-<div id="aiStatus"></div>
-
-</div>
-
-<div class="card">
-
-<h2>🧩 備案池</h2>
-
-<input id="backupInput" placeholder="輸入餐廳或景點">
-
-<button onclick="addBackup()">新增</button>
-
-<div id="backupList"></div>
-
-</div>
-
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
-
-<script src="script.js"></script>
-
-<script src="data.js"></script>
-
-<script src="api.js"></script>
-
-</body>
-
-</html>
+    <div class="card">
+        <h2>🧩 備案池</h2>
+        <input id="backupInput" placeholder="輸入餐廳或景點名稱...">
+        <button class="btn-primary" onclick="addBackup()" style="margin-top: 0;">新增至備案</button>
