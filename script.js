@@ -40,15 +40,15 @@ function renderTrip() {
             </div>
             
             <button onclick="openDayMap(${dayIndex})" style="background:#059669; margin: 10px 0; width: 100%; font-weight: bold;">
-                🗺 一鍵生成路線
+                🗺️ 一鍵生成路線
             </button>
 
             <div class="content sortable" id="day-${dayIndex}" style="display: ${isExpanded}">
                 ${(day.items || []).map((item, itemIndex) => `
                     <div class="timeline-item" data-day="${dayIndex}" data-index="${itemIndex}">
-                        <b>${item.time || ""}</b> ${item.text}
-                        ${item.note ? `<div style="color:#666;font-size:13px">📝 ${item.note}</div>` : ""}
-                        <div style="margin-top: 5px;">
+                        <div><b>${item.time || ""}</b> ${item.text}</div>
+                        ${item.note ? `<div style="color:#64748b;font-size:13px; margin-top:2px;">📝 ${item.note}</div>` : ""}
+                        <div class="timeline-actions">
                             <button onclick="editItem(${dayIndex},${itemIndex})">編輯</button>
                             <button onclick="addNote(${dayIndex},${itemIndex})">備註</button>
                             <button onclick="deleteItem(${dayIndex},${itemIndex})">刪除</button>
@@ -151,7 +151,7 @@ function renderBackups() {
             if (lastWithCoord && item.lat) {
                 const d = getDistance(item.lat, item.lng, lastWithCoord.lat, lastWithCoord.lng);
                 // ✅ 加大字體並改為白色，加上 bold 加粗
-                distInfo = `<br><span style="font-size:13px; font-weight:bold; color:#fff;">${d.toFixed(1)}km</span>`;
+                distInfo = `<br><span style="font-size:12px; font-weight:600; color:#64748b; margin-top: 2px; display: inline-block;">${d.toFixed(1)}km</span>`;
             }
 
             dayButtons += `
@@ -161,15 +161,15 @@ function renderBackups() {
             });
 
         list.innerHTML += `
-        <div style="display:flex; flex-direction:column; padding:10px; border-bottom:1px solid #eee; background: #fff; margin-bottom: 5px; border-radius: 8px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
-                <b>${item.name}</b>
+        <div class="backup-item">
+            <div class="backup-header">
+                <div class="backup-name">${item.name}</div>
                 <div>
-                    <a href="${item.map}" target="_blank" style="text-decoration:none;">📍地圖</a>
-                    <button onclick="deleteBackup(${index})" style="background:#ef4444; margin-left:10px;">🗑</button>
+                    <a href="${item.map}" target="_blank" style="text-decoration:none; font-size: 14px; margin-right: 8px;">📍地圖</a>
+                    <button onclick="deleteBackup(${index})" style="background:#fee2e2; color:#ef4444; padding: 4px 8px; font-size:12px;">刪除</button>
                 </div>
             </div>
-            <div style="display:flex; gap:4px; flex-wrap:wrap;">
+            <div class="backup-buttons">
                 ${dayButtons}
             </div>
         </div>
