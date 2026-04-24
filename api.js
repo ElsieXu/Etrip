@@ -8,7 +8,8 @@ async function parseTrip(){
   return
  }
 
- loading.innerText = "AI解析中..."
+ // 讓它顯示漂亮的旋轉圈圈與文字
+ loading.innerHTML = `<div class="loading-container"><span class="loader"></span> 智慧解析中，請稍候...</div>`;
 
  // ✅ fetch
  const res = await fetch(
@@ -74,7 +75,8 @@ for (let day of tripData.days) {
  saveTrip()
  renderTrip()
 
- loading.innerText = "完成"
+ // 清空 loading 狀態
+ loading.innerHTML = "";
 }
 
  
@@ -96,8 +98,8 @@ async function extractPlaces(){
  api="/extract_url"
   }
 
- const status=document.getElementById("aiStatus")
- status.innerText="AI解析中..."
+ const status = document.getElementById("aiStatus");
+ status.innerHTML = `<div class="loading-container"><span class="loader"></span> 景點抓取中，請稍候...</div>`;
 
  try{
 
@@ -163,7 +165,7 @@ enriched.forEach(p => {
 saveTrip();
 renderBackups();
 
-  status.innerText="完成"
+ status.innerHTML = ""; // ✅ 改成清空 status
 
  }catch(e){
 

@@ -5,149 +5,298 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Etrip 旅遊行程筆記</title>
     <style>
+        /* =========================================
+           總監優化版：雙欄位佈局與原生字體系統
+           ========================================= */
+        
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --success: #10b981;
+            --bg-main: #f8fafc;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+        }
+
+        /* 選擇 A：原生系統字體疊加 - 兼顧速度與美感 */
         body {
-            font-family: "Microsoft JhengHei", sans-serif;
-            background: #f3f4f6;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang TC", "Noto Sans CJK TC", "Apple LiGothic Medium", "Microsoft JhengHei", sans-serif;
+            background: var(--bg-main);
             margin: 0;
-            color: #333;
+            color: var(--text-main);
+            line-height: 1.6; /* 增加行高，提升閱讀舒適度 */
+            -webkit-font-smoothing: antialiased;
         }
 
         .container {
-            max-width: 900px;
+            max-width: 1200px; /* 電腦版放寬 */
             margin: auto;
-            padding: 16px;
+            padding: 24px 16px;
+        }
+
+        /* 頁首標題 */
+        .site-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .site-header h1 {
+            font-size: 2.5rem;
+            font-weight: 900;
+            margin-bottom: 8px;
+            letter-spacing: -1px;
+            color: #0f172a;
+        }
+
+        /* 雙欄佈局核心 (RWD) */
+        .workspace {
+            display: grid;
+            grid-template-columns: 1fr; /* 手機版：單欄 */
+            gap: 24px;
+            align-items: start;
+        }
+
+        /* 電腦版 (1024px 以上) 開啟雙欄 */
+        @media (min-width: 1024px) {
+            .workspace {
+                grid-template-columns: 1fr 400px; /* 只需要對調這裡的順序 */
+            }
+    
+            /* 同時將側邊欄改到右側 (原本在 HTML 結構中是第一個，我們用 order 調換) */
+            .sidebar {
+                order: 2; /* 強迫工具欄排在第二個（右側） */
+                position: sticky;
+                top: 24px;
+                max-height: calc(100vh - 48px);
+                overflow-y: auto;
+            }
+
+            .content-area {
+                order: 1; /* 行程區排在第一個（左側） */
+            }
         }
 
         .card {
             background: white;
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 16px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border-radius: 20px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            border: 1px solid #f1f5f9;
         }
 
         h2 {
             margin-top: 0;
-            color: #1e40af;
+            color: #0f172a;
+            font-size: 1.15rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-bottom: 12px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #f8fafc;
         }
 
-        textarea {
+        /* UI 元件樣式 */
+        textarea, input {
             width: 100%;
-            height: 160px;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
+            padding: 14px;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 12px;
             box-sizing: border-box;
-            font-size: 14px;
+            font-size: 15px;
+            font-family: inherit;
+            transition: all 0.2s ease;
+            background: #f8fafc;
         }
 
-        input {
-            width: 70%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
+        textarea:focus, input:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: white;
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
         }
 
         button {
-            margin: 4px;
-            padding: 8px 12px;
-            background: #2563eb;
+            padding: 12px 20px;
+            background: var(--primary);
             color: white;
             border: none;
-            border-radius: 6px;
+            border-radius: 12px;
             cursor: pointer;
-            font-size: 14px;
-            transition: background 0.3s;
+            font-size: 15px;
+            font-weight: 700;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         button:hover {
-            background: #1d4ed8;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.2);
         }
 
-        /* 導航按鈕專用顏色 */
-        button[onclick^="openDayMap"] {
-            background-color: #059669;
-            font-weight: bold;
-        }
-        
-        button[onclick^="openDayMap"]:hover {
-            background-color: #047857;
+        button:active { transform: scale(0.96); }
+
+        /* 摺疊面板與行程項目 */
+        .collapsible {
+            background: #f1f5f9;
+            padding: 16px;
+            cursor: pointer;
+            border-radius: 14px;
+            font-weight: 800;
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
         }
 
         .timeline-item {
-            padding: 10px 0;
-            border-bottom: 1px dashed #ddd;
+            padding: 16px;
+            background: white;
+            border: 1.5px solid #f1f5f9;
+            border-radius: 14px;
+            margin-bottom: 12px;
+            cursor: grab;
+            transition: all 0.2s;
         }
 
-        .collapsible {
-            background: #eef2ff;
-            padding: 12px;
-            margin-top: 10px;
-            cursor: pointer;
-            border-radius: 8px;
-            font-weight: bold;
+        .timeline-item:active { cursor: grabbing; transform: scale(1.02); }
+
+        .timeline-actions { display: flex; gap: 8px; margin-top: 12px; }
+        .timeline-actions button {
+            padding: 6px 12px;
+            font-size: 13px;
+            background: #f8fafc;
+            color: var(--text-muted);
+        }
+
+        /* 備案項目 */
+        .backup-item {
+            background: #ffffff;
+            border: 1.5px solid #f1f5f9;
+            padding: 16px;
+            border-radius: 16px;
+            margin-bottom: 12px;
+        }
+
+        .backup-buttons { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+        .backup-buttons button {
+            background: #f1f5f9;
+            color: var(--text-main);
+            border-radius: 100px;
+            padding: 8px 14px;
+            font-size: 13px;
+        }
+
+        /* Loading 旋轉動畫 */
+        .loader {
+            width: 24px;
+            height: 24px;
+            border: 3px solid #e2e8f0;
+            border-bottom-color: var(--primary);
+            border-radius: 50%;
+            display: inline-block;
+            box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+        }
+
+        @keyframes rotation {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-container {
             display: flex;
-            justify-content: space-between;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 16px;
+            color: var(--primary);
+            font-weight: 600;
         }
 
-        .content {
-            padding: 10px;
-            /* 預設隱藏由 script.js 透過狀態控制 */
-        }
 
-        #loading, #aiStatus {
-            margin-top: 8px;
-            color: #666;
-            font-size: 14px;
-        }
+        /* 隱藏捲軸 */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
     </style>
 </head>
 <body>
 
 <div class="container">
+    <header class="site-header">
+        <h1>Etrip</h1>
+        <p style="font-weight: 600; color: #64748b;">結合 AI 與地理資訊的專屬旅遊小助手</p>
+    </header>
 
-    <div class="card" style="display: flex; gap: 10px;">
-        <button onclick="downloadTripTxt()" style="background:#1e40af; flex: 1;">
-            💾 下載行程 (.txt)
-        </button>
-        <button onclick="exportTrip()" style="background:#059669; flex: 1;">
-            📋 複製行程
-        </button>
+    <div style="display: flex; gap: 12px; margin-bottom: 32px;">
+        <button onclick="downloadTripTxt()" style="background:#475569; flex: 1;">💾 下載行程</button>
+        <button onclick="exportTrip()" id="copyBtn" style="background:#0ea5e9; flex: 1;">📋 複製行程</button>
     </div>
 
-    <div class="card">
-        <h2>🤖 AI 行程解析</h2>
-        <textarea id="rawInput" placeholder="請貼上您的雜亂行程文字、機票或飯店資訊..."></textarea>
-        <button onclick="parseTrip()">AI 解析</button>
-        <div id="loading"></div>
+    <div class="workspace">
+        
+        <aside class="sidebar">
+            <div class="card">
+                <h2 translate="no">✨ 一鍵匯入行程</h2>
+                <textarea id="rawInput" placeholder="貼上雜亂行程文字、機票或飯店資訊..."></textarea>
+                <button onclick="parseTrip()" style="width:100%">開始解析</button>
+                <div id="loading"></div>
+            </div>
+
+            <div class="card">
+                <h2 translate="no">📡 景點雷達</h2>
+                <textarea id="aiText" placeholder="貼上遊記網址或推薦內容..." style="height: 80px;"></textarea>
+                <button onclick="extractPlaces()" style="width:100%">抓取景點</button>
+                <div id="aiStatus"></div>
+            </div>
+
+            <div class="card">
+                <h2 translate="no">🎒 口袋名單</h2>
+                <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                    <input id="backupInput" placeholder="輸入景點名稱">
+                    <button onclick="addBackup()" style="white-space: nowrap;">新增</button>
+                </div>
+                <div id="backupList"></div>
+            </div>
+        </aside>
+
+        <main class="content-area">
+            <div id="result">
+                <div class="card" style="text-align: center; color: #94a3b8; padding: 100px 20px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin: 0 auto 16px auto; display: block; opacity: 0.4;">
+                        <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
+                        <circle cx="12" cy="13" r="3"/>
+                    </svg>
+                    <p style="font-size: 1.1rem; font-weight: 600;">尚未匯入行程，請由右側面板「一鍵匯入」開始</p>
+                </div>
+            </div>
+        </main>
+
     </div>
-
-    <div id="result"></div>
-
-    <div class="card">
-        <h2>🤖 AI 抽取景點</h2>
-        <textarea id="aiText" placeholder="貼上 IG / FB / 部落格遊記文字或網址 URL，AI 會自動分析並加入備案池"></textarea>
-        <button onclick="extractPlaces()">AI 抽取景點</button>
-        <div id="aiStatus"></div>
-    </div>
-
-    <div class="card">
-        <h2>🧩 備案池</h2>
-        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-            <input id="backupInput" placeholder="輸入餐廳或景點名稱">
-            <button onclick="addBackup()" style="white-space: nowrap;">新增</button>
-        </div>
-        <div id="backupList"></div>
-    </div>
-
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
-
-<script src="script.js"></script>
 <script src="data.js"></script>
-
 <script src="api.js"></script>
+<script src="script.js"></script>
+
+<script>
+    // 複製成功微互動
+    const originalExport = window.exportTrip;
+    if(originalExport) {
+        window.exportTrip = function() {
+            originalExport();
+            const btn = document.getElementById('copyBtn');
+            const oldHtml = btn.innerHTML;
+            btn.innerHTML = '✅ 已複製！';
+            btn.style.background = '#10b981';
+            setTimeout(() => {
+                btn.innerHTML = oldHtml;
+                btn.style.background = '#0ea5e9';
+            }, 2000);
+        };
+    }
+</script>
 
 </body>
 </html>
