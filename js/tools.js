@@ -62,7 +62,10 @@ function renderTools() {
         <div class="info-row"><span class="info-key">目的地</span><span class="info-val">${esc(m.region) || "—"}</span></div>
         <div class="info-row"><span class="info-key">出發日</span><span class="info-val">${m.startDate ? formatDateLabel(m.startDate) : "—"}</span></div>
       </div>
-      <button class="btn block" data-action="trip-settings">${icon("edit")}修改設定</button>
+      <div class="btn-row">
+        <button class="btn" data-action="trip-settings">${icon("edit")}修改設定</button>
+        <button class="btn" data-action="daytrip-new">${icon("sun")}建立一日遊</button>
+      </div>
     </section>
 
     <section class="card">

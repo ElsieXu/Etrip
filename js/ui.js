@@ -184,9 +184,10 @@ function emptyStateHTML() {
     <p>把機票、訂房信、或隨手記的行程貼上來，AI 會幫你整理成每天的行程。也可以先收藏想去的地方，之後再排。</p>
     <div class="empty-actions">
       <button class="btn primary" data-action="go" data-view="tools" data-focus="#rawInput">${icon("sparkles")}貼上行程讓 AI 整理</button>
-      <button class="btn" data-action="day-add">${icon("plus")}手動建立第一天</button>
+      <button class="btn" data-action="daytrip-new">${icon("sun")}建立一日遊</button>
+      <button class="btn" data-action="day-add">${icon("calendar")}手動建立多日行程</button>
       <button class="btn ghost" data-action="go" data-view="pocket">${icon("bookmark")}先收藏口袋名單</button>
-      <button class="btn ghost" data-action="load-demo">${icon("sparkles")}先看看範例行程</button>
+      <button class="btn ghost" data-action="demo-pick">${icon("sparkles")}先看看範例行程</button>
     </div>
     <p class="empty-foot">電腦上已經整理好了？在電腦上點「工具 → 同步到手機」，用手機掃 QR Code 就能帶走。</p>
   </div>`;
@@ -197,7 +198,7 @@ function infoCardHTML({ compact = false } = {}) {
   const f = tripData.flight, info = tripData.info;
   const legs = [["去程", f.depart], ["回程", f.return]].filter(([, v]) => v);
   const legHTML = legs.map(([label, v]) => {
-    const dt = parseLooseDateTime(v);
+    const dt = legInfo(v);
     const cd = dt ? countdownText(dt.date, dt.time) : "";
     return `<div class="info-row">
       <span class="info-key">${label}</span>
@@ -224,19 +225,22 @@ function infoCardHTML({ compact = false } = {}) {
     .map(([k, v]) => `<div class="info-row"><span class="info-key">${k}</span><span class="info-val pre">${esc(v)}</span></div>`).join("");
 
   const empty = !legs.length && !tripData.hotels.length && !memo;
+  const dayTrip = isDayTrip();
   return `
   <section class="card info-card ${compact ? "compact" : ""}">
     <div class="card-head">
       <h2>${icon("ticket")}行程資訊</h2>
       <button class="btn sm ghost" data-action="info-edit">${icon("edit")}編輯</button>
     </div>
-    ${empty ? `<p class="muted">還沒有交通、住宿或訂位資訊。旅途中最常需要翻找的資料，建議先放在這裡。</p>` : ""}
+    ${empty ? `<p class="muted">${dayTrip
+      ? "還沒有交通資訊。填上回程時間（例如末班車），當天會幫你倒數。"
+      : "還沒有交通、住宿或訂位資訊。旅途中最常需要翻找的資料，建議先放在這裡。"}</p>` : ""}
     ${legHTML ? `<div class="info-group">${icon("plane", "info-icon")}<div class="info-rows">${legHTML}</div></div>` : ""}
     ${hotelHTML ? `<div class="info-group">${icon("bed", "info-icon")}<div class="info-rows">${hotelHTML}</div></div>` : ""}
     ${memo ? `<div class="info-group">${icon("info", "info-icon")}<div class="info-rows">${memo}</div></div>` : ""}
-    <div class="card-foot">
+    ${dayTrip && !tripData.hotels.length ? "" : `<div class="card-foot">
       <button class="btn sm ghost" data-action="hotel-add">${icon("plus")}新增住宿</button>
-    </div>
+    </div>`}
   </section>`;
 }
 
@@ -247,12 +251,14 @@ ACTIONS["info-edit"] = () => {
   openSheet({
     title: "編輯行程資訊",
     body: `
-      ${field({ name: "depart", label: "去程交通", value: f.depart, placeholder: "例：2025/11/20 08:30 CI120 桃園→那霸、或 高鐵 0803 車次", autofocus: true })}
-      ${field({ name: "ret", label: "回程交通", value: f.return, placeholder: "例：2025/11/24 18:30 CI121" })}
+      ${field({ name: "depart", label: "去程交通", value: f.depart, autofocus: true,
+        placeholder: isDayTrip() ? "例：08:10 台鐵 自強號 台北→瑞芳" : "例：2025/11/20 08:30 CI120 桃園→那霸、或 高鐵 0803 車次" })}
+      ${field({ name: "ret", label: "回程交通", value: f.return,
+        placeholder: isDayTrip() ? "例：20:10 區間車 基隆→台北（末班車 22:30）" : "例：2025/11/24 18:30 CI121" })}
       ${field({ name: "codes", label: "訂位代號 / 票券", value: info.codes, type: "textarea", placeholder: "機票訂位代號、租車、門票、餐廳訂位…" })}
       ${field({ name: "emergency", label: "緊急聯絡", value: info.emergency, type: "textarea", placeholder: "旅平險客服、信用卡掛失、駐外辦事處電話…" })}
       ${field({ name: "notes", label: "其他備忘", value: info.notes, type: "textarea" })}
-      <p class="field-hint">去回程有寫日期與時間（例如 11/20 08:30）就會自動倒數。</p>`,
+      <p class="field-hint">${isDayTrip() ? "寫上時間（例如 17:35）就會自動倒數，回程當天頁首會提醒你還剩多久。" : "去回程有寫日期與時間（例如 11/20 08:30）就會自動倒數。"}</p>`,
     actions: [{ label: "取消", value: "cancel", variant: "ghost" }, { label: "儲存", value: "save", variant: "primary" }],
     onAction(v, d) {
       if (v !== "save") return;

@@ -20,9 +20,10 @@ function renderToday() {
 
   // 頂部狀態
   let banner = "";
+  const single = days.length === 1;
   if (phase === "before") {
     const n = daysBetween(toISODate(new Date()), dayDate(0));
-    banner = `<div class="banner">${icon("plane")}<span>出發前預覽 · 還有 <b>${n}</b> 天出發</span></div>`;
+    banner = `<div class="banner">${icon(single ? "sun" : "plane")}<span>出發前預覽 · ${n === 1 ? "<b>明天</b>就出發" : `還有 <b>${n}</b> 天出發`}</span></div>`;
   } else if (phase === "after") {
     banner = `<div class="banner muted">${icon("check")}<span>旅程已經結束，可以回顧一下去了哪些地方</span></div>`;
   } else if (phase === "undated") {
@@ -39,27 +40,55 @@ function renderToday() {
   }).join("");
 
   const doneCount = day.items.filter(x => x.done).length;
+  const dayName = single ? "這趟" : `Day ${i + 1}`;
+  const ret = i === ti ? returnToday() : null;
+  const retHTML = ret ? `<p class="return-chip">${icon("clock")}回程 ${esc(ret.time)} · ${esc(ret.countdown || "時間到了，準備出發")}</p>` : "";
+
+  // 時間軸：接下來第一個超過 2 小時的空檔，提示可以看看附近的口袋名單（只顯示一個，避免太雜）
+  const rows = [];
+  const nextIdx = next ? day.items.indexOf(next) : day.items.length;
+  let gapShown = false;
+  day.items.forEach((it, k) => {
+    if (!gapShown && k > 0 && k - 1 >= nextIdx) {
+      const a = timeToMin(day.items[k - 1].time), b = timeToMin(it.time);
+      if (a != null && b != null && b - a >= 120) {
+        gapShown = true;
+        rows.push(`<li class="gap-row"><button data-action="scroll-nearby">${icon("bookmark")}到下一站前有 ${formatDuration(b - a)}，看看附近的口袋名單</button></li>`);
+      }
+    }
+    rows.push(`
+          <li class="tl-item ${it.done ? "done" : ""} ${next && it.id === next.id ? "current" : ""}">
+            <button class="check" data-action="item-done" data-day="${i}" data-id="${it.id}" aria-label="${it.done ? "取消完成" : "標記完成"}" aria-pressed="${it.done}">${icon("check")}</button>
+            <button class="tl-main" data-action="item-edit" data-day="${i}" data-id="${it.id}">
+              ${it.time ? `<span class="item-time">${esc(it.time)}</span>` : ""}
+              <span class="item-text">${esc(it.text)}</span>
+              ${it.note ? `<span class="item-note">${esc(it.note)}</span>` : ""}
+            </button>
+            <a class="icon-btn" href="${esc(mapsNavUrl(it))}" target="_blank" rel="noopener" aria-label="導航到 ${esc(it.text)}">${icon("nav")}</a>
+          </li>`);
+  });
 
   el.innerHTML = `
   <div class="today-layout">
     <div class="today-main">
       ${banner}
-      <div class="day-chips" role="tablist">${chips}</div>
+      ${single ? "" : `<div class="day-chips" role="tablist">${chips}</div>`}
 
       <section class="card next-card">
         ${next ? `
-          <p class="eyebrow">${i === ti ? "下一站" : `Day ${i + 1} 第一個未完成`}</p>
+          <p class="eyebrow">${i === ti ? "下一站" : single ? "第一站" : `Day ${i + 1} 第一個未完成`}</p>
           <h2 class="next-title">${esc(next.text)}</h2>
           <p class="next-meta">${next.time ? `<span>${icon("clock")}${esc(next.time)}</span>` : ""}${next.note ? `<span>${esc(next.note)}</span>` : ""}</p>
+          ${retHTML}
           <div class="next-actions">
             <a class="btn primary lg" href="${esc(mapsNavUrl(next))}" target="_blank" rel="noopener">${icon("nav")}導航過去</a>
             <button class="btn lg" data-action="item-done" data-day="${i}" data-id="${next.id}">${icon("check")}完成</button>
           </div>` : day.items.length ? `
-          <p class="eyebrow">Day ${i + 1}</p>
+          <p class="eyebrow">${dayName}</p>
           <h2 class="next-title">今天的行程都完成了 🎉</h2>
-          <p class="muted">還有時間的話，看看下面附近的口袋名單吧。</p>` : `
-          <p class="eyebrow">Day ${i + 1}</p>
-          <h2 class="next-title">這天還沒有排行程</h2>
+          <p class="muted">還有時間的話，看看下面附近的口袋名單吧。</p>${retHTML}` : `
+          <p class="eyebrow">${dayName}</p>
+          <h2 class="next-title">${single ? "還沒有排行程" : "這天還沒有排行程"}</h2>
           <p class="muted">隨心所欲的一天！從下方的口袋名單挑幾個吧。</p>
           <button class="btn" data-action="item-add" data-day="${i}">${icon("plus")}新增行程</button>`}
       </section>
@@ -73,16 +102,7 @@ function renderToday() {
           </div>
         </div>
         <ol class="timeline">
-          ${day.items.map(it => `
-          <li class="tl-item ${it.done ? "done" : ""} ${next && it.id === next.id ? "current" : ""}">
-            <button class="check" data-action="item-done" data-day="${i}" data-id="${it.id}" aria-label="${it.done ? "取消完成" : "標記完成"}" aria-pressed="${it.done}">${icon("check")}</button>
-            <button class="tl-main" data-action="item-edit" data-day="${i}" data-id="${it.id}">
-              ${it.time ? `<span class="item-time">${esc(it.time)}</span>` : ""}
-              <span class="item-text">${esc(it.text)}</span>
-              ${it.note ? `<span class="item-note">${esc(it.note)}</span>` : ""}
-            </button>
-            <a class="icon-btn" href="${esc(mapsNavUrl(it))}" target="_blank" rel="noopener" aria-label="導航到 ${esc(it.text)}">${icon("nav")}</a>
-          </li>`).join("") || `<li class="muted small">沒有行程</li>`}
+          ${rows.join("") || `<li class="muted small">沒有行程</li>`}
         </ol>
       </section>
     </div>
@@ -115,7 +135,7 @@ function nearbyCardHTML(day, next) {
   const cats = [["all", "全部"], ...Object.entries(CATEGORIES).map(([k, v]) => [k, `${v.icon} ${v.label}`])];
 
   return `
-  <section class="card nearby-card">
+  <section class="card nearby-card" id="nearbyCard">
     <div class="card-head">
       <h2>${icon("bookmark")}附近的口袋名單</h2>
       <button class="btn sm ${me ? "ghost" : "primary-soft"}" data-action="locate" data-then="today">${icon("locate")}${me ? "更新位置" : "用我的位置"}</button>
@@ -161,3 +181,5 @@ ACTIONS["backup-to-day"] = el => {
   const b = findBackup(el.dataset.id);
   if (b) addBackupToDay(b, +el.dataset.day);
 };
+
+ACTIONS["scroll-nearby"] = () => $("#nearbyCard")?.scrollIntoView({ behavior: "smooth", block: "start" });

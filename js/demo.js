@@ -37,11 +37,51 @@ function demoTrip() {
   };
 }
 
-ACTIONS["load-demo"] = () => {
-  replaceTrip(demoTrip());
+/** 一日遊範例：日期是今天，可以體驗回程倒數與空檔提示 */
+function demoDayTrip() {
+  const today = toISODate(new Date());
+  const slash = today.replace(/-/g, "/");
+  return {
+    meta: { title: "範例：九份金瓜石一日遊", region: "新北市瑞芳區", startDate: today },
+    flight: { depart: `${slash} 08:10 台鐵 自強號 台北→瑞芳`, return: `${slash} 20:10 區間車 基隆→台北（末班 22:30）` },
+    info: { notes: "悠遊卡記得加值，788 公車可刷卡" },
+    days: [{ title: "一日遊", items: [
+      { time: "09:00", text: "瑞芳車站", note: "轉 788 公車往九份", lat: 25.1088, lng: 121.8060 },
+      { time: "10:00", text: "九份老街", note: "阿柑姨芋圓、豎崎路拍照", lat: 25.1097, lng: 121.8448 },
+      { time: "13:00", text: "黃金博物館", note: "摸金磚，週一休館", lat: 25.1076, lng: 121.8580 },
+      { time: "16:00", text: "陰陽海", lat: 25.1205, lng: 121.8593 },
+      { time: "18:00", text: "基隆廟口夜市", note: "營養三明治、鼎邊趖", lat: 25.1283, lng: 121.7432 }
+    ] }],
+    backups: [
+      { name: "阿妹茶樓", category: "cafe", area: "九份", note: "神隱少女場景", priority: "must", lat: 25.1092, lng: 121.8446 },
+      { name: "九份茶坊", category: "cafe", area: "九份", rainy: true, lat: 25.1094, lng: 121.8450 },
+      { name: "黃金瀑布", category: "sight", area: "金瓜石", lat: 25.1167, lng: 121.8611 },
+      { name: "祈堂老街", category: "sight", area: "金瓜石", lat: 25.1063, lng: 121.8555 },
+      { name: "連珍芋泥球", category: "food", area: "基隆", priority: "must", lat: 25.1290, lng: 121.7415 }
+    ]
+  };
+}
+
+function loadDemo(kind) {
+  replaceTrip(kind === "day" ? demoDayTrip() : demoTrip());
   prefs.expanded = {};
   savePrefs();
   todaySel = null;
   setView("today");
   toast("已載入範例行程，可以隨意點點看", { action: { label: "復原", fn: () => { restorePrevTrip(); refresh(); } } });
+}
+
+ACTIONS["load-demo"] = el => loadDemo(el.dataset.kind);
+
+ACTIONS["demo-pick"] = () => {
+  openSheet({
+    title: "看看範例行程",
+    body: `<div class="sheet-list">
+      <button type="submit" name="_action" value="day" class="list-btn">${icon("sun")}<span><b>一日遊：九份金瓜石</b><small>今天出發，體驗回程倒數與空檔提示</small></span></button>
+      <button type="submit" name="_action" value="multi" class="list-btn">${icon("calendar")}<span><b>多日旅行：台南 3 天 2 夜</b><small>今天是第 2 天，體驗切換天數與住宿資訊</small></span></button>
+    </div>
+    ${tripData.days.length ? `<p class="field-hint">目前的行程會被取代，可以在「工具 → 復原上一版行程」找回。</p>` : ""}`,
+    actions: [{ label: "取消", value: "cancel", variant: "ghost" }],
+    onAction(v) { if (v === "day" || v === "multi") loadDemo(v); }
+  });
 };

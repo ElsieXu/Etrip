@@ -244,6 +244,31 @@ function tripPhase() {
   return "during";
 }
 
+/** 一日遊：只有一天的行程 */
+function isDayTrip() { return tripData.days.length === 1; }
+
+/**
+ * 解析去程 / 回程文字的日期時間。
+ * 一日遊常常只寫「17:35 自強號」沒寫日期，就當作是那一天。
+ */
+function legInfo(text) {
+  const s = str(text);
+  if (!s) return null;
+  let r = parseLooseDateTime(s);
+  if (!r) {
+    const t = s.match(/(\d{1,2})\s*[:：]\s*(\d{2})/);
+    if (t && isDayTrip() && dayDate(0)) r = { date: dayDate(0), time: `${pad2(+t[1])}:${t[2]}` };
+  }
+  return r;
+}
+
+/** 今天要回程的話，回傳回程時間與倒數 */
+function returnToday() {
+  const r = legInfo(tripData.flight.return);
+  if (!r || !r.time || r.date !== toISODate(new Date())) return null;
+  return { time: r.time, countdown: countdownText(r.date, r.time) };
+}
+
 function findItem(dayIndex, id) {
   const day = tripData.days[dayIndex];
   if (!day) return null;

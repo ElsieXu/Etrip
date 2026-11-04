@@ -125,6 +125,17 @@ function countdownText(dateIso, time) {
   return `還有 ${days} 天`;
 }
 
+/** "09:30" → 570（分鐘），看不懂就回傳 null */
+function timeToMin(t) {
+  const m = str(t).match(/(\d{1,2})\s*[:：]\s*(\d{2})/);
+  return m ? (+m[1]) * 60 + (+m[2]) : null;
+}
+
+function formatDuration(min) {
+  const h = Math.floor(min / 60), m = min % 60;
+  return h ? `${h} 小時${m ? ` ${m} 分` : ""}` : `${m} 分鐘`;
+}
+
 // ===== 距離 =====
 
 function haversine(lat1, lng1, lat2, lng2) {

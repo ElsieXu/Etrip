@@ -38,15 +38,19 @@ function renderHeader() {
   const phase = tripPhase();
   let status = "";
   if (phase === "before") {
-    const dep = parseLooseDateTime(tripData.flight.depart);
+    const dep = legInfo(tripData.flight.depart);
     const cd = dep && dep.date === dayDate(0) ? countdownText(dep.date, dep.time) : countdownText(dayDate(0));
     status = `<span class="pill primary">${esc(cd || "即將出發")}</span>`;
   } else if (phase === "during") {
-    status = `<span class="pill accent">旅途中 · Day ${todayIndex() + 1}/${n}</span>`;
+    const ret = returnToday();
+    if (ret) status = `<span class="pill accent">${ret.countdown ? "回程" + esc(ret.countdown) : "回程時間到了"}</span>`;
+    else status = `<span class="pill accent">${n === 1 ? "今天出發" : `旅途中 · Day ${todayIndex() + 1}/${n}`}</span>`;
   } else if (phase === "after") {
     status = `<span class="pill">已結束</span>`;
   }
-  const range = n && dayDate(0) ? `${formatDateLabel(dayDate(0))}${n > 1 ? " – " + formatDateLabel(dayDate(n - 1)) : ""} · ${n} 天` : n ? `${n} 天` : "";
+  const range = n === 1 ? `${dayDate(0) ? formatDateLabel(dayDate(0)) + " · " : ""}一日遊`
+    : n && dayDate(0) ? `${formatDateLabel(dayDate(0))} – ${formatDateLabel(dayDate(n - 1))} · ${n} 天`
+    : n ? `${n} 天` : "";
 
   $("#tripHeader").innerHTML = `
     <button class="trip-title" data-action="trip-settings" title="行程設定">

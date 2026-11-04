@@ -3,6 +3,7 @@
 // =========================================
 
 function isExpanded(day, i) {
+  if (isDayTrip()) return true; // 一日遊只有一天，永遠展開
   if (day.id in prefs.expanded) return !!prefs.expanded[day.id];
   const ti = todayIndex();
   return ti >= 0 ? i === ti : i === 0;
@@ -21,12 +22,14 @@ function renderPlan() {
     <div class="plan-main">
       ${infoCardHTML()}
       <div class="section-head">
-        <h2>每日行程</h2>
-        <button class="btn sm ghost" data-action="days-expand-all" data-open="${allOpen ? 0 : 1}">${allOpen ? "全部收合" : "全部展開"}</button>
+        <h2>${isDayTrip() ? "行程" : "每日行程"}</h2>
+        ${isDayTrip() ? "" : `<button class="btn sm ghost" data-action="days-expand-all" data-open="${allOpen ? 0 : 1}">${allOpen ? "全部收合" : "全部展開"}</button>`}
       </div>
       ${tripData.days.map((d, i) => dayCardHTML(d, i)).join("")}
-      <button class="add-day" data-action="day-add">${icon("plus")}新增一天</button>
-      <p class="hint-line">小技巧：按住 ${icon("grip")} 可以拖曳排序，也能拖到其他天。</p>
+      ${isDayTrip()
+        ? `<button class="add-day subtle" data-action="day-add">${icon("plus")}行程變長了？改成多日行程（新增第 2 天）</button>`
+        : `<button class="add-day" data-action="day-add">${icon("plus")}新增一天</button>`}
+      <p class="hint-line">小技巧：按住 ${icon("grip")} 可以拖曳排序${isDayTrip() ? "" : "，也能拖到其他天"}。</p>
     </div>
     ${pocketAsideHTML()}
   </div>`;
@@ -39,17 +42,21 @@ function dayCardHTML(day, i) {
   const date = dayDate(i);
   const isToday = i === todayIndex();
   const done = day.items.filter(x => x.done).length;
-  return `
-  <article class="card day-card ${isToday ? "is-today" : ""}" data-day="${i}">
-    <header class="day-head">
-      <button class="day-toggle" data-action="day-toggle" data-id="${day.id}" aria-expanded="${open}">
-        <span class="day-badge">D${i + 1}</span>
+  const single = isDayTrip();
+  const d = parseISODate(date);
+  const badge = single && d ? `<span class="day-badge date"><small>${d.getMonth() + 1}月</small>${d.getDate()}</span>` : `<span class="day-badge">D${i + 1}</span>`;
+  const head = `
+        ${badge}
         <span class="day-title-wrap">
           <span class="day-title">${esc(day.title)}${isToday ? '<span class="pill accent">今天</span>' : ""}</span>
           <span class="day-sub">${date ? formatDateLabel(date) + " · " : ""}${day.items.length} 個行程${done ? `・完成 ${done}` : ""}</span>
-        </span>
-        ${icon("chevron", "chev")}
-      </button>
+        </span>`;
+  return `
+  <article class="card day-card ${isToday ? "is-today" : ""}" data-day="${i}">
+    <header class="day-head">
+      ${single
+        ? `<div class="day-toggle static">${head}</div>`
+        : `<button class="day-toggle" data-action="day-toggle" data-id="${day.id}" aria-expanded="${open}">${head}${icon("chevron", "chev")}</button>`}
       <div class="day-tools">
         ${dayRouteButtonHTML(i)}
         <button class="icon-btn" data-action="day-menu" data-day="${i}" title="這天的選項" aria-label="這天的選項">${icon("more")}</button>
@@ -228,13 +235,13 @@ ACTIONS["day-menu"] = el => {
   const i = +el.dataset.day;
   const day = tripData.days[i];
   openSheet({
-    title: `Day ${i + 1} 選項`,
+    title: isDayTrip() ? "行程選項" : `Day ${i + 1} 選項`,
     body: `
       ${field({ name: "title", label: "這天的標題", value: day.title, placeholder: "例：Day 1 那霸市區" })}
       <div class="sheet-list">
         <button type="submit" name="_action" value="sort" class="list-btn">${icon("route")}<span><b>依順路重新排序</b><small>用直線距離重排（第一站不動），可以復原</small></span></button>
-        <button type="submit" name="_action" value="up" class="list-btn" ${i === 0 ? "disabled" : ""}>${icon("chevron", "rot180")}<span><b>往前移一天</b></span></button>
-        <button type="submit" name="_action" value="down" class="list-btn" ${i === tripData.days.length - 1 ? "disabled" : ""}>${icon("chevron")}<span><b>往後移一天</b></span></button>
+        ${isDayTrip() ? "" : `<button type="submit" name="_action" value="up" class="list-btn" ${i === 0 ? "disabled" : ""}>${icon("chevron", "rot180")}<span><b>往前移一天</b></span></button>
+        <button type="submit" name="_action" value="down" class="list-btn" ${i === tripData.days.length - 1 ? "disabled" : ""}>${icon("chevron")}<span><b>往後移一天</b></span></button>`}
         <button type="submit" name="_action" value="delete" class="list-btn danger">${icon("trash")}<span><b>刪除這一天</b><small>${day.items.length} 個行程會一起刪除，可以復原</small></span></button>
       </div>`,
     actions: [{ label: "取消", value: "cancel", variant: "ghost" }, { label: "儲存標題", value: "save", variant: "primary" }],
@@ -292,3 +299,44 @@ async function enrichAndSave(targets, { silent = true } = {}) {
   if (!silent) toast(found ? `已補上 ${found} 個地點的座標` : "這次沒有找到新的座標");
   return found;
 }
+
+// ===== 建立一日遊 =====
+
+function openDayTripSheet() {
+  const hasCurrent = tripData.days.length > 0;
+  openSheet({
+    title: "建立一日遊",
+    body: `
+      ${field({ name: "title", label: "名稱", placeholder: "例：九份金瓜石一日遊", autofocus: true })}
+      ${field({ name: "region", label: "目的地", placeholder: "例：九份、台中", hint: "用來提高地點定位的準確度" })}
+      ${field({ name: "date", label: "日期", type: "date", value: toISODate(new Date()) })}
+      <div class="field-row">
+        ${field({ name: "depart", label: "出發時間", type: "time" })}
+        ${field({ name: "ret", label: "回程時間", type: "time", hint: "例如末班車，當天會倒數提醒" })}
+      </div>
+      ${hasCurrent ? `<p class="field-hint">目前的「${esc(tripData.meta.title || "行程")}」會被取代，可以在「工具 → 復原上一版行程」找回。口袋名單會保留。</p>` : ""}`,
+    actions: [{ label: "取消", value: "cancel", variant: "ghost" }, { label: "建立", value: "create", variant: "primary" }],
+    onAction(v, d) {
+      if (v !== "create") return;
+      const date = isISODate(d.date) ? d.date : toISODate(new Date());
+      const slash = date.replace(/-/g, "/");
+      const region = str(d.region);
+      replaceTrip({
+        meta: { title: str(d.title) || `${region}一日遊`, region, startDate: date },
+        flight: {
+          depart: d.depart ? `${slash} ${d.depart} 出發` : "",
+          return: d.ret ? `${slash} ${d.ret} 回程` : ""
+        },
+        days: [{ title: "一日遊", items: [] }],
+        backups: tripData.backups
+      });
+      prefs.expanded = {};
+      savePrefs();
+      todaySel = null;
+      setView("plan");
+      toast("一日遊建立好了，開始新增行程，或從口袋名單挑幾個吧", hasCurrent
+        ? { action: { label: "復原", fn: () => { restorePrevTrip(); refresh(); } } } : {});
+    }
+  });
+}
+ACTIONS["daytrip-new"] = () => openDayTripSheet();

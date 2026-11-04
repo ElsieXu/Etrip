@@ -422,6 +422,10 @@ input[type=checkbox] { width: 20px; height: 20px; min-height: 0; accent-color: v
   background: transparent; color: var(--text-2); font: inherit; font-weight: 700; cursor: pointer;
 }
 .add-day:hover { color: var(--primary); border-color: var(--primary); }
+.add-day.subtle { min-height: 44px; font-size: 14px; font-weight: 600; color: var(--muted); border-style: dashed; }
+.day-toggle.static { cursor: default; }
+.day-badge.date { display: flex; flex-direction: column; line-height: 1; gap: 2px; font-size: 16px; }
+.day-badge.date small { font-size: 10px; font-weight: 700; }
 
 .plan-aside { display: none; }
 
@@ -465,6 +469,12 @@ input[type=checkbox] { width: 20px; height: 20px; min-height: 0; accent-color: v
 .next-card .next-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 14px; opacity: .92; }
 .next-card .next-meta span { display: inline-flex; align-items: center; gap: 4px; }
 .next-card .muted { color: rgba(255, 255, 255, .85); }
+.return-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 12px; padding: 6px 12px; border-radius: 99px;
+  background: rgba(255, 255, 255, .2); font-size: 14px; font-weight: 700;
+}
+.return-chip .i { width: 16px; height: 16px; }
 .next-actions { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 16px; }
 .next-card .btn { border: 0; }
 .next-card .btn.primary { background: #fff; color: var(--primary); }
@@ -492,6 +502,15 @@ input[type=checkbox] { width: 20px; height: 20px; min-height: 0; accent-color: v
 .tl-item.done .item-text { text-decoration: line-through; color: var(--muted); }
 .tl-item.current .tl-main { background: var(--primary-soft); border-radius: 10px; padding-left: 8px; }
 
+.gap-row { padding: 2px 0 2px 44px; }
+.gap-row button {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 36px; padding: 4px 12px; border-radius: 10px;
+  border: 1px dashed var(--border); background: var(--surface-2); color: var(--text-2);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; text-align: left;
+}
+.gap-row button:hover { color: var(--primary); border-color: var(--primary); }
+.gap-row .i { width: 15px; height: 15px; color: var(--primary); }
 .near-list { list-style: none; margin: 0; padding: 0; }
 .near-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); }
 .near-item:first-child { border-top: 0; }
