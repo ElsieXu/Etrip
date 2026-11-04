@@ -6,6 +6,8 @@
 const ICONS = {
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
   refresh: '<path d="M21 12a9 9 0 0 1-15.36 6.36L3 16"/><path d="M3 21v-5h5"/><path d="M3 12a9 9 0 0 1 15.36-6.36L21 8"/><path d="M21 3v5h-5"/>',
+  moon: '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
+  palette: '<circle cx="13.5" cy="6.5" r="1.2"/><circle cx="17.5" cy="10.5" r="1.2"/><circle cx="8.5" cy="7.5" r="1.2"/><circle cx="6.5" cy="12.5" r="1.2"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.65-.44-1.13a1.64 1.64 0 0 1 1.67-1.67h2c3.05 0 5.56-2.5 5.56-5.55C21.97 6.01 17.46 2 12 2z"/>',
   clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
   calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
   bookmark: '<path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
@@ -319,4 +321,56 @@ ACTIONS["hotel-edit"] = el => openHotelSheet(tripData.hotels.find(h => h.id === 
 ACTIONS["copy"] = async el => {
   const ok = await copyText(el.dataset.text || "");
   toast(ok ? "已複製" : "複製失敗");
+};
+
+// ===== 外觀：深淺模式、主題色（存在這台裝置） =====
+
+const ACCENTS = {
+  sky:      { label: "晴空藍",   color: "#2563eb" },
+  matcha:   { label: "抹茶綠",   color: "#3d7a4c" },
+  ocean:    { label: "海洋青",   color: "#0e7490" },
+  lavender: { label: "薰衣草紫", color: "#7448d8" }
+};
+const THEMES = [["auto", "自動", "phoneDevice"], ["light", "淺色", "sun"], ["dark", "深色", "moon"]];
+
+function applyAppearance() {
+  const root = document.documentElement;
+  const theme = prefs.theme === "light" || prefs.theme === "dark" ? prefs.theme : "";
+  const accent = ACCENTS[prefs.accent] && prefs.accent !== "sky" ? prefs.accent : "";
+  if (theme) root.dataset.theme = theme; else delete root.dataset.theme;
+  if (accent) root.dataset.accent = accent; else delete root.dataset.accent;
+  // 手機瀏覽器上方的顏色跟著背景
+  const bg = getComputedStyle(document.body).backgroundColor;
+  $$('meta[name="theme-color"]').forEach(m => { m.content = bg; m.removeAttribute("media"); });
+}
+
+function appearanceCardHTML() {
+  const theme = prefs.theme || "auto";
+  const accent = ACCENTS[prefs.accent] ? prefs.accent : "sky";
+  return `
+  <section class="card">
+    <div class="card-head"><h2>${icon("palette")}外觀</h2></div>
+    <div class="segmented" role="radiogroup" aria-label="深淺模式">
+      ${THEMES.map(([v, label, ic]) => `<button type="button" role="radio" aria-checked="${theme === v}" class="${theme === v ? "active" : ""}" data-action="set-theme" data-v="${v}">${icon(ic)}${label}</button>`).join("")}
+    </div>
+    <p class="field-hint">「自動」會跟著手機或電腦的設定切換深淺色。</p>
+    <div class="swatches" role="radiogroup" aria-label="主題色">
+      ${Object.entries(ACCENTS).map(([k, a]) => `<button type="button" role="radio" aria-checked="${accent === k}" class="swatch ${accent === k ? "active" : ""}" data-action="set-accent" data-v="${k}">
+        <span class="swatch-dot" style="background:${a.color}">${icon("check")}</span>${a.label}</button>`).join("")}
+    </div>
+    <p class="field-hint">外觀設定只存在這台裝置，手機和電腦可以用不同的配色。</p>
+  </section>`;
+}
+
+ACTIONS["set-theme"] = el => {
+  prefs.theme = el.dataset.v;
+  savePrefs();
+  applyAppearance();
+  refresh();
+};
+ACTIONS["set-accent"] = el => {
+  prefs.accent = el.dataset.v;
+  savePrefs();
+  applyAppearance();
+  refresh();
 };

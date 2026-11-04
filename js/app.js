@@ -85,6 +85,7 @@ function initialView() {
 }
 
 function init() {
+  applyAppearance();
   // 正在旅途中的行程優先打開
   if (tripPhase() !== "during") {
     const during = library.trips.find(t => tripPhaseOf(t) === "during");

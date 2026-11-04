@@ -427,7 +427,7 @@ function mergeLibraries(local, remote) {
 
 const prefs = (() => {
   const defaults = {
-    view: "", expanded: {}, apiBase: "",
+    view: "", expanded: {}, apiBase: "", theme: "auto", accent: "sky",
     pocket: { cat: "all", must: false, rainy: false, hideVisited: false, sort: "new" }
   };
   try {

@@ -39,9 +39,10 @@ function renderTools() {
           <button class="btn primary" data-action="sync-create">${icon("refresh")}開啟雲端同步</button>
           <button class="btn" data-action="sync-join">我已經有同步碼</button>
         </div>
-        <p class="field-hint">需要先把伺服器搬到 Google Cloud Run（見 DEPLOY.md），並在「進階設定」填好伺服器網址。</p>
       `}
     </section>
+
+    ${appearanceCardHTML()}
 
     <section class="card">
       <div class="card-head"><h2>${icon("download")}備份與匯出</h2></div>

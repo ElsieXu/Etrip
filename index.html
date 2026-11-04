@@ -15,6 +15,14 @@
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="styles.css">
+  <script>
+    // 在畫面出現前套用外觀設定（深淺模式、主題色），避免閃一下
+    try {
+      var p = JSON.parse(localStorage.getItem("etrip_prefs") || "{}");
+      if (p.theme === "light" || p.theme === "dark") document.documentElement.dataset.theme = p.theme;
+      if (p.accent && p.accent !== "sky") document.documentElement.dataset.accent = p.accent;
+    } catch (e) {}
+  </script>
 </head>
 <body>
 
