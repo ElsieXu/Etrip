@@ -5,4 +5,4 @@
 // 也可以在網站的「工具 → 進階設定」個別設定，那裡的設定會優先使用。
 // =========================================
 
-const DEFAULT_API_BASE = "https://etrip.onrender.com";
+const DEFAULT_API_BASE = "https://etrip-api-690497062302.asia-east1.run.app";
