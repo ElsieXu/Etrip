@@ -186,6 +186,7 @@ function emptyStateHTML() {
       <button class="btn primary" data-action="go" data-view="tools" data-focus="#rawInput">${icon("sparkles")}貼上行程讓 AI 整理</button>
       <button class="btn" data-action="day-add">${icon("plus")}手動建立第一天</button>
       <button class="btn ghost" data-action="go" data-view="pocket">${icon("bookmark")}先收藏口袋名單</button>
+      <button class="btn ghost" data-action="load-demo">${icon("sparkles")}先看看範例行程</button>
     </div>
     <p class="empty-foot">電腦上已經整理好了？在電腦上點「工具 → 同步到手機」，用手機掃 QR Code 就能帶走。</p>
   </div>`;

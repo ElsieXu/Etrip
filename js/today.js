@@ -68,7 +68,7 @@ function renderToday() {
         <div class="card-head">
           <h2>${icon("calendar")}${esc(day.title)}<span class="muted small">${doneCount}/${day.items.length}</span></h2>
           <div class="row-gap">
-            <button class="icon-btn" data-action="day-route" data-day="${i}" title="整天路線" aria-label="整天路線">${icon("route")}</button>
+            ${dayRouteButtonHTML(i)}
             <button class="icon-btn" data-action="item-add" data-day="${i}" title="新增行程" aria-label="新增行程">${icon("plus")}</button>
           </div>
         </div>

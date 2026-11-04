@@ -398,10 +398,17 @@ ACTIONS["install"] = async () => {
 };
 
 ACTIONS["clear-all"] = () => {
-  if (!confirm("確定要清除所有行程與口袋名單嗎？（之後可以用「復原上一版行程」救回一次）")) return;
-  replaceTrip(emptyTrip());
-  prefs.expanded = {};
-  savePrefs();
-  refresh();
-  toast("已清除");
+  openSheet({
+    title: "清除所有資料？",
+    body: `<p>會刪除這個瀏覽器裡的所有行程與口袋名單。清除後可以在「工具 → 復原上一版行程」救回一次。</p>`,
+    actions: [{ label: "取消", value: "cancel", variant: "ghost" }, { label: "清除", value: "clear", variant: "danger" }],
+    onAction(v) {
+      if (v !== "clear") return;
+      replaceTrip(emptyTrip());
+      prefs.expanded = {};
+      savePrefs();
+      refresh();
+      toast("已清除");
+    }
+  });
 };

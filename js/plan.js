@@ -51,7 +51,7 @@ function dayCardHTML(day, i) {
         ${icon("chevron", "chev")}
       </button>
       <div class="day-tools">
-        <button class="icon-btn" data-action="day-route" data-day="${i}" title="開啟整天路線" aria-label="開啟整天路線">${icon("route")}</button>
+        ${dayRouteButtonHTML(i)}
         <button class="icon-btn" data-action="day-menu" data-day="${i}" title="這天的選項" aria-label="這天的選項">${icon("more")}</button>
       </div>
     </header>
@@ -202,17 +202,27 @@ ACTIONS["day-add"] = () => {
   toast(`已新增 Day ${n + 1}`);
 };
 
-ACTIONS["day-route"] = el => openDayRoute(+el.dataset.day);
+const ROUTE_MAX = 10; // Google 地圖一條路線最多約 10 個點
 
-function openDayRoute(i) {
-  const day = tripData.days[i];
-  const stops = (day?.items || []).filter(x => !x.done).map(x => x.text).filter(Boolean);
-  if (!stops.length) return toast("這天沒有尚未完成的行程");
-  const MAX = 10; // Google 地圖一條路線最多約 10 個點
-  const url = "https://www.google.com/maps/dir/" + stops.slice(0, MAX).map(encodeURIComponent).join("/");
-  window.open(url, "_blank", "noopener");
-  if (stops.length > MAX) toast(`Google 地圖一次最多 ${MAX} 個點，已先放前 ${MAX} 個`);
+/** 整天路線（只放還沒完成的行程） */
+function dayRouteStops(i) {
+  return (tripData.days[i]?.items || []).filter(x => !x.done).map(x => x.text).filter(Boolean);
 }
+
+function dayRouteButtonHTML(i) {
+  const stops = dayRouteStops(i);
+  if (!stops.length) {
+    return `<button class="icon-btn" data-action="route-empty" title="整天路線" aria-label="整天路線">${icon("route")}</button>`;
+  }
+  const url = "https://www.google.com/maps/dir/" + stops.slice(0, ROUTE_MAX).map(encodeURIComponent).join("/");
+  const more = stops.length > ROUTE_MAX ? "1" : "";
+  return `<a class="icon-btn" href="${esc(url)}" target="_blank" rel="noopener" data-route-more="${more}" title="在 Google 地圖開啟整天路線" aria-label="整天路線">${icon("route")}</a>`;
+}
+
+ACTIONS["route-empty"] = () => toast("這天沒有尚未完成的行程");
+document.addEventListener("click", e => {
+  if (e.target.closest("[data-route-more='1']")) toast(`Google 地圖一次最多 ${ROUTE_MAX} 個點，已先放前 ${ROUTE_MAX} 個`);
+});
 
 ACTIONS["day-menu"] = el => {
   const i = +el.dataset.day;
