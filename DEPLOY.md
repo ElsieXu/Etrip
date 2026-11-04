@@ -75,8 +75,19 @@ gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${PR
 git clone https://github.com/ElsieXu/Etrip.git && cd Etrip
 ```
 
+**新版還沒合併到 main 之前，一定要切換到新版分支**（不然會部署到舊版，出現 `Building using Buildpacks` 然後失敗）：
+
+```bash
+git checkout claude/youthful-ptolemy-bgv92z
+```
+
+確認新版檔案存在（看到兩個檔名就對了）：
+
+```bash
+ls Dockerfile DEPLOY.md
+```
+
 > 如果專案是私人的，GitHub 會要你登入：帳號輸入 GitHub 帳號，密碼要用 GitHub 的「Personal access token」（Settings → Developer settings → Personal access tokens 建立）。
-> 新版還沒合併到 main 的話，再執行 `git checkout claude/youthful-ptolemy-bgv92z`。
 
 ## 7. 部署
 
@@ -91,6 +102,7 @@ gcloud run deploy etrip-api --source . --region asia-east1 --allow-unauthenticat
 ```
 
 - 第一次會問要不要建立 Artifact Registry 存放區，輸入 `Y`
+- 畫面上應該寫 `Building using Dockerfile`；如果寫 `Buildpacks`，代表沒有切換到新版分支，請回到第 6 步
 - 大約 3～5 分鐘，完成後會顯示 **Service URL**，例如 `https://etrip-api-xxxxxxxx.asia-east1.run.app`，複製起來
 
 ## 8. 確認可以用，並把網址填進網站
