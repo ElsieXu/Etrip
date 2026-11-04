@@ -10,6 +10,8 @@ function filteredBackups({ query = pocketQuery, opts = prefs.pocket } = {}) {
   let list = tripData.backups.slice();
   if (q) list = list.filter(b => [b.name, b.area, b.note].join(" ").toLowerCase().includes(q));
   if (opts.cat !== "all") list = list.filter(b => b.category === opts.cat);
+  if (opts.area === "__trip") list = list.filter(b => nearTrip(b));
+  else if (opts.area && opts.area !== "all") list = list.filter(b => areaOf(b) === opts.area);
   if (opts.must) list = list.filter(b => b.priority === "must");
   if (opts.rainy) list = list.filter(b => b.rainy);
   if (opts.hideVisited) list = list.filter(b => b.status !== "visited" && !visitsOf(b).length);
@@ -23,6 +25,39 @@ function filteredBackups({ query = pocketQuery, opts = prefs.pocket } = {}) {
   };
   withDist.sort(sorters[opts.sort] || sorters.new);
   return withDist;
+}
+
+/** 地區名稱（沒填的歸到「未分地區」） */
+function areaOf(b) { return str(b.area) || "未分地區"; }
+
+/** 依收藏數量排序的地區清單 */
+function areaCounts() {
+  const m = new Map();
+  for (const b of library.backups) m.set(areaOf(b), (m.get(areaOf(b)) || 0) + 1);
+  return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-Hant"));
+}
+
+/** 這個收藏在不在目前行程附近：地區名稱相符、已排進行程，或離行程任一地點 25 公里內 */
+function nearTrip(b, t = tripData) {
+  const region = str(t.meta.region);
+  const area = str(b.area);
+  if (region && area && (region.includes(area) || area.includes(region))) return true;
+  if (t.days.some(d => d.items.some(it => itemMatchesBackup(it, b)))) return true;
+  if (b.lat == null) return false;
+  return tripCoords(t).some(p => haversine(p.lat, p.lng, b.lat, b.lng) < 25);
+}
+function tripHasPlace(t = tripData) { return !!(str(t.meta.region) || tripCoords(t).length); }
+
+function areaChipsHTML(active, action) {
+  const areas = areaCounts();
+  if (areas.length < 2 && !tripHasPlace()) return "";
+  const nearCount = tripHasPlace() ? library.backups.filter(b => nearTrip(b)).length : 0;
+  return `
+    <div class="chip-row scroll area-row">
+      <button class="chip ${!active || active === "all" ? "active" : ""}" data-action="${action}" data-v="all">所有地區</button>
+      ${tripHasPlace() ? `<button class="chip ${active === "__trip" ? "active" : ""}" data-action="${action}" data-v="__trip">${icon("pin")}這趟附近<small>${nearCount}</small></button>` : ""}
+      ${areas.slice(0, 10).map(([a, n]) => `<button class="chip ${active === a ? "active" : ""}" data-action="${action}" data-v="${esc(a)}">${esc(a)}<small>${n}</small></button>`).join("")}
+    </div>`;
 }
 
 function renderPocket() {
@@ -55,6 +90,7 @@ function renderPocket() {
 
   <div class="filter-bar">
     <label class="search">${icon("search")}<input id="pocketSearch" type="search" placeholder="搜尋名稱、地區、備註" value="${esc(pocketQuery)}"></label>
+    ${areaChipsHTML(p.area, "pocket-area")}
     <div class="chip-row scroll">
       ${cats.map(([k, label]) => `<button class="chip ${p.cat === k ? "active" : ""}" data-action="pocket-cat" data-v="${k}">${label}<small>${counts[k] || 0}</small></button>`).join("")}
     </div>
@@ -145,6 +181,8 @@ function poiCardHTML(b, d) {
 
 let asideQuery = "";
 let asideCat = "all";
+let asideNear = true;   // 電腦版右側預設只看這趟行程附近的收藏
+ACTIONS["aside-near"] = () => { asideNear = !asideNear; renderPlan(); };
 
 function pocketAsideHTML() {
   return `
@@ -158,6 +196,9 @@ function pocketAsideHTML() {
         <input name="name" placeholder="快速收藏…" autocomplete="off" aria-label="快速收藏">
         <button class="icon-btn" type="submit" aria-label="收藏">${icon("plus")}</button>
       </form>
+      ${tripHasPlace() ? `<div class="chip-row">
+        <button class="chip ${asideNear ? "active" : ""}" data-action="aside-near">${icon("pin")}只看這趟附近</button>
+      </div>` : ""}
       <div class="chip-row">
         ${[["all", "全部"], ...Object.entries(CATEGORIES).map(([k, v]) => [k, v.icon])].map(([k, l]) =>
           `<button class="chip ${asideCat === k ? "active" : ""}" data-action="aside-cat" data-v="${k}" title="${k === "all" ? "全部" : CATEGORIES[k].label}">${l}</button>`).join("")}
@@ -172,7 +213,7 @@ function pocketAsideHTML() {
 function renderAsideList() {
   const ul = $("#asideList");
   if (!ul) return;
-  const list = filteredBackups({ query: asideQuery, opts: { ...prefs.pocket, cat: asideCat, must: false, rainy: false, hideVisited: true, sort: "must" } });
+  const list = filteredBackups({ query: asideQuery, opts: { ...prefs.pocket, cat: asideCat, area: asideNear && tripHasPlace() ? "__trip" : "all", must: false, rainy: false, hideVisited: true, sort: "must" } });
   ul.innerHTML = list.map(({ b }) => {
     const sched = scheduledDays(b);
     return `
@@ -205,6 +246,7 @@ ACTIONS["aside-cat"] = el => { asideCat = el.dataset.v; renderPlan(); };
 // ===== 篩選 =====
 
 ACTIONS["pocket-cat"] = el => { prefs.pocket.cat = el.dataset.v; savePrefs(); renderPocket(); };
+ACTIONS["pocket-area"] = el => { prefs.pocket.area = el.dataset.v; savePrefs(); renderPocket(); };
 ACTIONS["pocket-flag"] = el => {
   const k = el.dataset.k;
   prefs.pocket[k] = !prefs.pocket[k];

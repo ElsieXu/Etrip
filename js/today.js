@@ -73,6 +73,7 @@ function renderToday() {
     <div class="today-main">
       ${banner}
       ${single ? "" : `<div class="day-chips" role="tablist">${chips}</div>`}
+      ${weatherRowHTML(i)}
 
       <section class="card next-card">
         ${next ? `
@@ -108,6 +109,8 @@ function renderToday() {
     </div>
 
     <div class="today-side">
+      ${todayExpenseHTML(i)}
+      ${currencyCardHTML()}
       ${nearbyCardHTML(day, next)}
       ${infoCardHTML({ compact: true })}
     </div>
@@ -183,3 +186,28 @@ ACTIONS["backup-to-day"] = el => {
 };
 
 ACTIONS["scroll-nearby"] = () => $("#nearbyCard")?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+/** 天氣：16 天內才有預報；降雨機率高時提醒看雨天備案 */
+function weatherRowHTML(i) {
+  const date = dayDate(i);
+  if (!date) return "";
+  const ahead = daysBetween(toISODate(new Date()), date);
+  if (ahead < 0) return "";
+  if (ahead > 15) return `<p class="weather-row muted">${icon("sun")}出發前兩週內會顯示天氣預報</p>`;
+  const w = dayWeather(tripData, i);
+  if (!w) return "";
+  const info = wmoInfo(w.code);
+  const rainy = w.pop >= 60;
+  return `
+  <div class="weather-row ${rainy ? "rainy" : ""}">
+    <span class="wx-icon">${info.icon}</span>
+    <span class="wx-main"><b>${esc(info.text)} ${w.max}° / ${w.min}°</b><small>降雨機率 ${w.pop ?? "—"}%${tripData.meta.region ? ` · ${esc(tripData.meta.region)}` : ""}</small></span>
+    ${rainy ? `<button class="btn sm" data-action="rain-backup">${icon("umbrella")}看雨天備案</button>` : ""}
+  </div>`;
+}
+
+ACTIONS["rain-backup"] = () => {
+  nearRainy = true;
+  renderToday();
+  $("#nearbyCard")?.scrollIntoView({ behavior: "smooth", block: "start" });
+};

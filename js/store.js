@@ -24,16 +24,23 @@ const CATEGORIES = {
 function emptyTrip() {
   return {
     id: uid(),
-    meta: { title: "", region: "", startDate: "", albumUrl: "", demo: false, createdAt: Date.now(), updatedAt: 0, exportedAt: 0 },
+    meta: {
+      title: "", region: "", startDate: "", albumUrl: "", demo: false,
+      abroad: null,      // true 國外 / false 國內 / null 自動判斷
+      currency: "",      // 當地幣別，例如 JPY（空白 = 自動判斷）
+      createdAt: Date.now(), updatedAt: 0, exportedAt: 0
+    },
     flight: { depart: "", return: "" },          // 去程 / 回程交通（航班、高鐵、自駕都可）
     hotels: [],
     info: { codes: "", emergency: "", notes: "" }, // 重要資訊卡
-    days: []
+    days: [],
+    expenses: [],      // 記帳
+    packing: []        // 行李清單
   };
 }
 
 function emptyLibrary() {
-  return { version: SCHEMA_VERSION, currentTripId: "", trips: [], backups: [], deleted: {} };
+  return { version: SCHEMA_VERSION, currentTripId: "", trips: [], backups: [], deleted: {}, templates: {} };
 }
 
 function normCategory(c) {
@@ -120,6 +127,8 @@ function normalizeTrip(raw) {
   t.meta.createdAt = num(meta.createdAt) || num(meta.updatedAt) || Date.now();
   t.meta.updatedAt = num(meta.updatedAt) || 0;
   t.meta.exportedAt = num(meta.exportedAt) || 0;
+  t.meta.abroad = meta.abroad === true ? true : meta.abroad === false ? false : null;
+  t.meta.currency = /^[A-Z]{3}$/.test(str(meta.currency)) ? meta.currency : "";
 
   t.flight.depart = str(raw.flight?.depart);
   t.flight.return = str(raw.flight?.return);
@@ -139,8 +148,56 @@ function normalizeTrip(raw) {
     items: (Array.isArray(d?.items) ? d.items : []).map(normalizeItem).filter(x => x.text)
   }));
 
+  t.expenses = (Array.isArray(raw.expenses) ? raw.expenses : []).map(normalizeExpense).filter(e => e.amount > 0);
+  t.packing = (Array.isArray(raw.packing) ? raw.packing : []).map(normalizePackItem).filter(p => p.text);
+
   if (!t.meta.startDate) t.meta.startDate = inferStartDate(t);
   return t;
+}
+
+const EXPENSE_CATS = {
+  food:      { label: "餐飲", icon: "🍜" },
+  transport: { label: "交通", icon: "🚃" },
+  stay:      { label: "住宿", icon: "🏨" },
+  ticket:    { label: "門票", icon: "🎫" },
+  shop:      { label: "購物", icon: "🛍️" },
+  other:     { label: "其他", icon: "📦" }
+};
+const PAY_METHODS = {
+  cash: { label: "現金",     icon: "💵" },
+  card: { label: "信用卡",   icon: "💳" },
+  epay: { label: "電子支付", icon: "📱" }
+};
+
+function normalizeExpense(e) {
+  e = e || {};
+  return {
+    id: str(e.id) || uid(),
+    dayId: str(e.dayId),
+    amount: Math.round((num(e.amount) || 0) * 100) / 100,
+    currency: /^[A-Z]{3}$/.test(str(e.currency)) ? e.currency : "TWD",
+    twd: num(e.twd),                         // 記帳當下換算的台幣（沒有匯率時是 null）
+    category: EXPENSE_CATS[e.category] ? e.category : "other",
+    method: PAY_METHODS[e.method] ? e.method : "cash",
+    place: str(e.place),
+    note: str(e.note),
+    createdAt: num(e.createdAt) || Date.now()
+  };
+}
+
+function normalizePackItem(p) {
+  if (typeof p === "string") p = { text: p };
+  p = p || {};
+  return { id: str(p.id) || uid(), text: str(p.text), done: !!p.done };
+}
+
+function normalizeTemplates(raw) {
+  const out = {};
+  for (const k of ["day", "domestic", "abroad"]) {
+    const t = raw && raw[k];
+    if (t && Array.isArray(t.items)) out[k] = { items: t.items.map(str).filter(Boolean), updatedAt: num(t.updatedAt) || 0 };
+  }
+  return out;
 }
 
 /** 口袋名單去重（同名合併，保留有座標的那筆） */
@@ -158,6 +215,7 @@ function normalizeBackups(list) {
 
 function tripHasContent(t) {
   return !!(t.days.length || t.meta.title || t.hotels.length || t.flight.depart || t.flight.return ||
+    (t.expenses && t.expenses.length) || (t.packing && t.packing.length) ||
     t.info.codes || t.info.emergency || t.info.notes);
 }
 
@@ -170,6 +228,7 @@ function normalizeLibrary(raw) {
     lib.backups = normalizeBackups(raw.backups);
     lib.currentTripId = str(raw.currentTripId);
     for (const [id, ts] of Object.entries(raw.deleted || {})) if (num(ts)) lib.deleted[id] = num(ts);
+    lib.templates = normalizeTemplates(raw.templates);
   } else {
     const t = normalizeTrip(raw);
     if (tripHasContent(t)) lib.trips = [t];
@@ -230,11 +289,13 @@ function attachTrip(t) {
 
 function tripSig(t) { return JSON.stringify({ ...t, meta: { ...t.meta, updatedAt: 0, exportedAt: 0 } }); }
 function backupSig(b) { return JSON.stringify({ ...b, updatedAt: 0 }); }
+function templatesSig(t) { return JSON.stringify(Object.fromEntries(Object.entries(t || {}).map(([k, v]) => [k, v.items]))); }
 
 function rememberSignatures() {
   _sigs = new Map();
   library.trips.forEach(t => _sigs.set(t.id, tripSig(t)));
   library.backups.forEach(b => _sigs.set(b.id, backupSig(b)));
+  _sigs.set("__templates", templatesSig(library.templates));
 }
 
 /**
@@ -261,6 +322,10 @@ function saveTrip() {
     const s = backupSig(b);
     if (_sigs.get(b.id) !== s) { b.updatedAt = now; _sigs.set(b.id, s); changed = true; }
   }
+  library.templates = library.templates || {};
+  alive.add("__templates");
+  const ts = templatesSig(library.templates);
+  if (_sigs.get("__templates") !== ts) { _sigs.set("__templates", ts); changed = true; }
   for (const id of [..._sigs.keys()]) {
     if (!alive.has(id)) { library.deleted[id] = now; _sigs.delete(id); changed = true; }
   }
@@ -386,6 +451,8 @@ function duplicateTrip(src) {
     d.items.forEach(it => { it.id = uid(); it.done = false; });
   });
   copy.hotels.forEach(h => { h.id = uid(); h.code = ""; h.dates = ""; });
+  copy.expenses = [];
+  (copy.packing || []).forEach(p => { p.id = uid(); p.done = false; });
   return createTrip(copy);
 }
 
@@ -420,6 +487,11 @@ function mergeLibraries(local, remote) {
     if (!prev || (b.updatedAt || 0) > (prev.updatedAt || 0)) byName.set(k, b);
   }
   out.backups = [...byName.values()].sort((a, b) => a.createdAt - b.createdAt);
+
+  out.templates = { ...(remote.templates || {}) };
+  for (const [k, v] of Object.entries(local.templates || {})) {
+    if (!out.templates[k] || (v.updatedAt || 0) > (out.templates[k].updatedAt || 0)) out.templates[k] = v;
+  }
   return out;
 }
 
@@ -427,8 +499,8 @@ function mergeLibraries(local, remote) {
 
 const prefs = (() => {
   const defaults = {
-    view: "", expanded: {}, apiBase: "",
-    pocket: { cat: "all", must: false, rainy: false, hideVisited: false, sort: "new" }
+    view: "", expanded: {}, apiBase: "", theme: "auto", accent: "sky",
+    pocket: { cat: "all", area: "all", must: false, rainy: false, hideVisited: false, sort: "new" }
   };
   try {
     const p = JSON.parse(localStorage.getItem(PREFS_KEY) || "{}");

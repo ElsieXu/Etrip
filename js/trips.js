@@ -81,6 +81,14 @@ function openTripSettings({ isNew = false } = {}) {
       ${field({ name: "region", label: "目的地（城市 / 地區）", value: m.region, placeholder: "例：沖繩、台南", hint: "用來提高地點定位的準確度" })}
       ${field({ name: "startDate", label: "出發日（Day 1）", value: m.startDate, type: "date", hint: "之後每一天的日期會自動往後推算" })}
       ${isNew ? field({ name: "days", label: "天數", value: 3, type: "number" }) : ""}
+      <div class="field-row">
+        ${field({ name: "abroad", label: "國內 / 國外", type: "select", value: m.abroad === true ? "abroad" : m.abroad === false ? "domestic" : "auto",
+          options: [{ value: "auto", label: `自動（${isAbroad(tripData) ? "國外" : "國內"}）` }, { value: "domestic", label: "國內" }, { value: "abroad", label: "國外" }] })}
+        ${field({ name: "currency", label: "當地幣別", type: "select", value: m.currency || "",
+          options: [{ value: "", label: `自動${tripCurrency(tripData) && tripCurrency(tripData) !== "TWD" ? `（${currencyName(tripCurrency(tripData))}）` : ""}` },
+            ...Object.entries(CURRENCIES).filter(([k]) => k !== "TWD").map(([k, c]) => ({ value: k, label: `${c.name} ${k}` }))] })}
+      </div>
+      <p class="field-hint">國外行程會顯示匯率，記帳也能用當地幣別。</p>
       ${isNew ? "" : field({ name: "albumUrl", label: "相簿連結", value: m.albumUrl, type: "url", placeholder: "Google 相簿分享網址", hint: "旅行回顧時可以一鍵打開照片" })}
       ${saved && !isNew ? `<div class="sheet-list">
         <button type="submit" name="_action" value="duplicate" class="list-btn">${icon("copy")}<span><b>再去一次</b><small>複製成新行程：日期和打勾清掉，心得留著參考</small></span></button>
@@ -114,6 +122,8 @@ function openTripSettings({ isNew = false } = {}) {
       m.region = str(d.region);
       m.startDate = newStart;
       if (!isNew) m.albumUrl = safeUrl(d.albumUrl);
+      m.abroad = d.abroad === "abroad" ? true : d.abroad === "domestic" ? false : null;
+      m.currency = /^[A-Z]{3}$/.test(d.currency || "") ? d.currency : "";
       if (isNew) {
         const n = Math.min(30, Math.max(1, parseInt(d.days, 10) || 1));
         while (tripData.days.length < n) tripData.days.push({ id: uid(), title: `Day ${tripData.days.length + 1}`, date: "", items: [] });
@@ -142,7 +152,7 @@ function reviewCardHTML() {
       <div><b>${tripData.days.length}</b><span>天</span></div>
       <div><b>${s.done}</b><span>個去過的地方</span></div>
       <div><b>${s.avg ? s.avg.toFixed(1) : "—"}</b><span>平均評分</span></div>
-      <div><b>${s.reviews}</b><span>則心得</span></div>
+      <div><b>${tripData.expenses.length ? fmtMoney(sumExpenses(tripData.expenses).total, "TWD") : "—"}</b><span>花費</span></div>
     </div>
     <p class="muted small">點每個地點可以補上星星和一句心得，下次規劃時會很有用。</p>
     <div class="btn-row">
