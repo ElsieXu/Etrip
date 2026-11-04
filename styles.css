@@ -843,3 +843,5 @@ input[type=checkbox] { width: 20px; height: 20px; min-height: 0; accent-color: v
 .swatch-dot .i { width: 16px; height: 16px; opacity: 0; }
 .swatch.active { border-color: var(--primary); color: var(--text); }
 .swatch.active .swatch-dot .i { opacity: 1; }
+
+.nowrap { white-space: nowrap; }

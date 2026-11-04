@@ -50,7 +50,7 @@ function dayCardHTML(day, i) {
         ${badge}
         <span class="day-title-wrap">
           <span class="day-title">${esc(day.title)}${isToday ? '<span class="pill accent">今天</span>' : ""}</span>
-          <span class="day-sub">${date ? formatDateLabel(date) + " · " : ""}${day.items.length} 個行程${done ? `・完成 ${done}` : ""}</span>
+          <span class="day-sub">${date ? formatDateLabel(date) + " · " : ""}<span class="nowrap">${day.items.length} 個行程</span>${done ? `<span class="nowrap">・完成 ${done}</span>` : ""}</span>
         </span>`;
   return `
   <article class="card day-card ${isToday ? "is-today" : ""}" data-day="${i}">
