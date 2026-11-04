@@ -1,33 +1,43 @@
 // =========================================
-// api.js — 與後端（Render 上的 Flask）溝通
+// api.js — 與後端（Google Cloud Run 上的 Flask）溝通
 // =========================================
 
-const API_BASE = "https://etrip.onrender.com";
+/** 伺服器網址：工具 → 進階設定 > config.js 的預設值 */
+function apiBase() {
+  return (str(prefs.apiBase) || DEFAULT_API_BASE).replace(/\/+$/, "");
+}
 
 /**
- * 呼叫後端。Render 免費方案閒置後第一次啟動要 30~60 秒，
- * 所以超過 6 秒會呼叫 onSlow，讓畫面提示「伺服器喚醒中」。
+ * 呼叫後端。伺服器閒置後第一次啟動需要一點時間，
+ * 超過 6 秒會呼叫 onSlow，讓畫面提示「伺服器喚醒中」。
+ * okStatuses：這些狀態碼不當作錯誤（例如同步衝突 409），回傳 { status, data }
  */
-async function apiPost(path, body, { timeout = 100000, onSlow } = {}) {
-  if (!navigator.onLine) throw new Error("目前沒有網路連線，AI 功能需要網路");
+async function apiRequest(method, path, body, { timeout = 100000, onSlow, okStatuses = [] } = {}) {
+  if (!navigator.onLine) throw new Error("目前沒有網路連線");
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeout);
   const slowTimer = setTimeout(() => onSlow && onSlow(), 6000);
   try {
-    const res = await fetch(API_BASE + path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: ctrl.signal
+    const res = await fetch(apiBase() + path, {
+      method,
+      headers: body ? { "Content-Type": "application/json" } : {},
+      body: body ? JSON.stringify(body) : undefined,
+      signal: ctrl.signal,
+      cache: "no-store"
     });
     let data = null;
     try { data = await res.json(); } catch (e) { /* 非 JSON */ }
-    if (!res.ok) throw new Error((data && data.error) || `伺服器錯誤（${res.status}）`);
+    if (okStatuses.includes(res.status)) return { status: res.status, data };
+    if (!res.ok) {
+      const err = new Error((data && data.error) || `伺服器錯誤（${res.status}）`);
+      err.status = res.status;
+      throw err;
+    }
     if (data && data.error) throw new Error(data.error);
-    return data;
+    return okStatuses.length ? { status: res.status, data } : data;
   } catch (e) {
     if (e.name === "AbortError") throw new Error("等太久了，伺服器可能還在啟動，請再試一次");
-    if (e instanceof TypeError) throw new Error("連不到伺服器，請檢查網路後再試一次");
+    if (e instanceof TypeError) throw new Error("連不到伺服器，請檢查網路，或到「工具 → 進階設定」確認伺服器網址");
     throw e;
   } finally {
     clearTimeout(timer);
@@ -35,12 +45,14 @@ async function apiPost(path, body, { timeout = 100000, onSlow } = {}) {
   }
 }
 
+function apiPost(path, body, opts) { return apiRequest("POST", path, body, opts); }
+
 /** 提早叫醒伺服器（不等結果），之後真正呼叫時就不用等那麼久 */
 let _lastWake = 0;
 function wakeServer() {
   if (!navigator.onLine || Date.now() - _lastWake < 300000) return;
   _lastWake = Date.now();
-  fetch(API_BASE + "/health", { mode: "no-cors", cache: "no-store" }).catch(() => {});
+  fetch(apiBase() + "/health", { mode: "no-cors", cache: "no-store" }).catch(() => {});
 }
 
 // ===== AI 整理行程 =====
@@ -54,11 +66,14 @@ async function aiParseTrip(text, opts) {
 
 // ===== AI 抽取景點 =====
 
-const SOCIAL_RE = /instagram\.com|tiktok\.com|youtube\.com|youtu\.be|xiaohongshu\.com|xhslink\.com|facebook\.com|fb\.watch|threads\.net/i;
+// 這些社群網站的網址通常讀不到內容（YouTube 例外：Gemini 可以直接看影片）
+const SOCIAL_RE = /instagram\.com|tiktok\.com|xiaohongshu\.com|xhslink\.com|facebook\.com|fb\.watch|threads\.net/i;
+const YOUTUBE_RE = /youtube\.com\/(watch|shorts|live)|youtu\.be\//i;
 
-async function aiExtractPlaces(text, opts) {
+async function aiExtractPlaces(text, opts = {}) {
   const path = isUrl(text) ? "/extract_url" : "/extract_places";
-  const data = await apiPost(path, { text }, opts);
+  // 看影片比較久，給 3 分鐘
+  const data = await apiPost(path, { text }, { timeout: YOUTUBE_RE.test(text) ? 180000 : 100000, ...opts });
   let places = data?.places;
   if (typeof places === "string") {
     const parsed = parseAIJson(places);

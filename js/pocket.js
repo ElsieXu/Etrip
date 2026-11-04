@@ -12,7 +12,7 @@ function filteredBackups({ query = pocketQuery, opts = prefs.pocket } = {}) {
   if (opts.cat !== "all") list = list.filter(b => b.category === opts.cat);
   if (opts.must) list = list.filter(b => b.priority === "must");
   if (opts.rainy) list = list.filter(b => b.rainy);
-  if (opts.hideVisited) list = list.filter(b => b.status !== "visited");
+  if (opts.hideVisited) list = list.filter(b => b.status !== "visited" && !visitsOf(b).length);
 
   const withDist = list.map(b => ({ b, d: me && b.lat != null ? haversine(me.lat, me.lng, b.lat, b.lng) : null }));
   const sorters = {
@@ -45,9 +45,9 @@ function renderPocket() {
     <details class="card radar" ${tripData.backups.length ? "" : "open"}>
       <summary><h2>${icon("radar")}景點雷達：從文章或影片抓地點</h2>${icon("chevron", "chev")}</summary>
       <div class="radar-body">
-        <textarea id="radarText" rows="4" placeholder="貼上部落格網址，或影片說明文字、筆記、清單…"></textarea>
-        <input id="radarSource" placeholder="來源連結（選填）：IG / YouTube / TikTok 網址">
-        <p class="field-hint">IG、TikTok、YouTube 的網址通常抓不到內容。建議把影片說明文字貼在上面，網址填在「來源連結」，之後到現場可以一鍵打開影片。</p>
+        <textarea id="radarText" rows="4" placeholder="貼上 YouTube 影片網址、部落格網址，或影片說明文字、筆記、清單…"></textarea>
+        <input id="radarSource" placeholder="來源連結（選填）：IG / TikTok 網址">
+        <p class="field-hint">▶ YouTube 公開影片：直接貼網址，AI 會看完影片找出介紹的地點（約 30 秒～2 分鐘）。<br>IG、TikTok 的網址讀不到內容：請把影片說明文字貼在上面，網址填在「來源連結」，到現場可以一鍵打開影片。</p>
         <button class="btn primary block" data-action="radar-run">${icon("sparkles")}抓取地點</button>
       </div>
     </details>
@@ -125,7 +125,7 @@ function poiCardHTML(b, d) {
     </div>
     ${b.note ? `<p class="poi-note">${esc(b.note)}</p>` : ""}
     <div class="poi-tags">
-      ${b.status === "visited" ? `<span class="tag success">✓ 去過了</span>` : ""}
+      ${visitTagHTML(b)}
       ${b.status === "skipped" ? `<span class="tag">沒去成</span>` : ""}
       ${sched.length ? `<span class="tag primary">已排入 ${sched.map(i => "D" + (i + 1)).join("、")}</span>` : ""}
       ${b.rainy ? `<span class="tag">🌧 雨天OK</span>` : ""}
@@ -329,14 +329,15 @@ ACTIONS["radar-run"] = async el => {
   }
   if (isUrl(text)) {
     if (!source) source = text;
-    if (SOCIAL_RE.test(text)) toast("社群網站常常抓不到內容，若沒有結果，請改貼影片說明文字");
+    if (SOCIAL_RE.test(text)) toast("IG、TikTok 等社群網站通常讀不到內容，若沒有結果，請改貼影片說明文字");
   }
-  setBusy(el, true, "AI 抓取中…");
+  const isVideo = YOUTUBE_RE.test(text);
+  setBusy(el, true, isVideo ? "AI 正在看影片…" : "AI 抓取中…");
   try {
-    const places = await aiExtractPlaces(text, { onSlow: () => setBusy(el, true, "伺服器喚醒中，第一次約需 30~60 秒…") });
+    const places = await aiExtractPlaces(text, { onSlow: () => setBusy(el, true, isVideo ? "AI 正在看影片，影片越長越久…" : "伺服器喚醒中，請稍候…") });
     setBusy(el, false);
     if (!places.length) {
-      toast("沒有找到地點。若是社群影片，請改貼影片說明文字");
+      toast(isVideo ? "影片裡沒有找到明確的地點" : "沒有找到地點。若是社群影片，請改貼影片說明文字");
       return;
     }
     showRadarPreview(places, safeUrl(source));
@@ -378,4 +379,14 @@ function showRadarPreview(places, source) {
       enrichAndSave(added, { silent: false });
     }
   });
+}
+
+/** 去過的紀錄：所有行程裡打勾過的次數、最近一次和評分 */
+function visitTagHTML(b) {
+  const visits = visitsOf(b);
+  if (!visits.length) return b.status === "visited" ? `<span class="tag success">✓ 去過了</span>` : "";
+  const last = visits[0];
+  const when = last.date ? `${parseISODate(last.date).getFullYear()}/${parseISODate(last.date).getMonth() + 1}` : "";
+  const title = last.trip.meta.title || "行程";
+  return `<span class="tag success" title="${esc(last.review || "")}">✓ 去過 ${visits.length} 次 · ${esc([when, title].filter(Boolean).join(" "))}${last.rating ? ` ⭐${last.rating}` : ""}</span>`;
 }

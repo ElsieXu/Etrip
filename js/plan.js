@@ -20,6 +20,7 @@ function renderPlan() {
   el.innerHTML = `
   <div class="plan-layout">
     <div class="plan-main">
+      ${tripPhase() === "after" ? reviewCardHTML() : ""}
       ${infoCardHTML()}
       <div class="section-head">
         <h2>${isDayTrip() ? "行程" : "每日行程"}</h2>
@@ -79,6 +80,7 @@ function itemRowHTML(it, dayIndex) {
       ${it.time ? `<span class="item-time">${esc(it.time)}</span>` : ""}
       <span class="item-text">${esc(it.text)}</span>
       ${it.note ? `<span class="item-note">${esc(it.note)}</span>` : ""}
+      ${it.rating || it.review ? `<span class="item-review">${it.rating ? `<span class="stars">${"★".repeat(it.rating)}${"☆".repeat(5 - it.rating)}</span>` : ""}${esc(it.review)}</span>` : ""}
     </button>
     <a class="icon-btn" href="${esc(mapsNavUrl(it))}" target="_blank" rel="noopener" title="導航" aria-label="導航到 ${esc(it.text)}">${icon("nav")}</a>
   </div>`;
@@ -127,7 +129,16 @@ function openItemSheet(dayIndex, item) {
       </div>
       ${field({ name: "text", label: "地點或活動", value: it.text, required: true, autofocus: true, placeholder: "例：首里城、國際通晚餐", hint: "寫店名或景點名稱，導航會比較準" })}
       ${field({ name: "note", label: "備註", value: it.note, type: "textarea", placeholder: "要點的菜、營業時間、注意事項…" })}
-      ${isNew ? "" : toggleField({ name: "done", label: "已完成", checked: it.done })}`,
+      ${isNew ? "" : toggleField({ name: "done", label: "已完成", checked: it.done })}
+      ${isNew ? "" : `
+      <details class="review-fields" ${it.rating || it.review || it.done || tripPhase() === "after" ? "open" : ""}>
+        <summary>去過之後：評分與心得</summary>
+        <div class="star-input" role="radiogroup" aria-label="評分">
+          ${[1, 2, 3, 4, 5].map(n => `<label><input type="radio" name="rating" value="${n}" ${it.rating === n ? "checked" : ""}><span aria-hidden="true">★</span><span class="sr-only">${n} 顆星</span></label>`).join("")}
+          <label class="star-clear"><input type="radio" name="rating" value="0" ${!it.rating ? "checked" : ""}><span>不評分</span></label>
+        </div>
+        ${field({ name: "review", label: "一句心得", value: it.review, type: "textarea", rows: 2, placeholder: "例：芋圓普通，下次換別家；景色超值得" })}
+      </details>`}`,
     actions: [
       ...(isNew ? [] : [{ label: "刪除", value: "delete", variant: "danger" }]),
       { label: "取消", value: "cancel", variant: "ghost" },
@@ -141,6 +152,10 @@ function openItemSheet(dayIndex, item) {
       const target = +d.day;
       const nameChanged = text !== it.text;
       Object.assign(it, { time: str(d.time), text, note: str(d.note), done: isNew ? false : !!d.done });
+      if (!isNew) {
+        it.rating = Math.min(5, Math.max(0, parseInt(d.rating, 10) || 0));
+        it.review = str(d.review);
+      }
       if (nameChanged) { it.lat = null; it.lng = null; it.placeId = ""; }
       if (isNew) {
         tripData.days[target].items.push(it);
@@ -239,6 +254,7 @@ ACTIONS["day-menu"] = el => {
     body: `
       ${field({ name: "title", label: "這天的標題", value: day.title, placeholder: "例：Day 1 那霸市區" })}
       <div class="sheet-list">
+        <button type="submit" name="_action" value="copy-other" class="list-btn">${icon("copy")}<span><b>加到其他行程</b><small>挑幾個地點複製到另一個行程（例如併進下次的多日旅行）</small></span></button>
         <button type="submit" name="_action" value="sort" class="list-btn">${icon("route")}<span><b>依順路重新排序</b><small>用直線距離重排（第一站不動），可以復原</small></span></button>
         ${isDayTrip() ? "" : `<button type="submit" name="_action" value="up" class="list-btn" ${i === 0 ? "disabled" : ""}>${icon("chevron", "rot180")}<span><b>往前移一天</b></span></button>
         <button type="submit" name="_action" value="down" class="list-btn" ${i === tripData.days.length - 1 ? "disabled" : ""}>${icon("chevron")}<span><b>往後移一天</b></span></button>`}
@@ -248,6 +264,7 @@ ACTIONS["day-menu"] = el => {
     onAction(v, d) {
       if (v === "cancel") return;
       if (str(d.title)) day.title = str(d.title);
+      if (v === "copy-other") { setTimeout(() => openCopyToTrip(i), 50); return; }
       if (v === "sort") {
         const before = day.items.slice();
         day.items = sortByDistance(day.items);
@@ -295,7 +312,7 @@ function addBackupToDay(backup, dayIndex, position) {
 async function enrichAndSave(targets, { silent = true } = {}) {
   if (!targets.some(t => t.lat == null)) return 0;
   const found = await enrichTargets(targets, tripData.meta.region);
-  if (found) { saveTrip({ touch: false }); refresh(); }
+  if (found) { saveTrip(); refresh(); }
   if (!silent) toast(found ? `已補上 ${found} 個地點的座標` : "這次沒有找到新的座標");
   return found;
 }
@@ -303,7 +320,6 @@ async function enrichAndSave(targets, { silent = true } = {}) {
 // ===== 建立一日遊 =====
 
 function openDayTripSheet() {
-  const hasCurrent = tripData.days.length > 0;
   openSheet({
     title: "建立一日遊",
     body: `
@@ -314,28 +330,26 @@ function openDayTripSheet() {
         ${field({ name: "depart", label: "出發時間", type: "time" })}
         ${field({ name: "ret", label: "回程時間", type: "time", hint: "例如末班車，當天會倒數提醒" })}
       </div>
-      ${hasCurrent ? `<p class="field-hint">目前的「${esc(tripData.meta.title || "行程")}」會被取代，可以在「工具 → 復原上一版行程」找回。口袋名單會保留。</p>` : ""}`,
+      <p class="field-hint">會建立成一個新行程，目前的行程不受影響。</p>`,
     actions: [{ label: "取消", value: "cancel", variant: "ghost" }, { label: "建立", value: "create", variant: "primary" }],
     onAction(v, d) {
       if (v !== "create") return;
       const date = isISODate(d.date) ? d.date : toISODate(new Date());
       const slash = date.replace(/-/g, "/");
       const region = str(d.region);
-      replaceTrip({
+      const t = createTrip({
         meta: { title: str(d.title) || `${region}一日遊`, region, startDate: date },
         flight: {
           depart: d.depart ? `${slash} ${d.depart} 出發` : "",
           return: d.ret ? `${slash} ${d.ret} 回程` : ""
         },
-        days: [{ title: "一日遊", items: [] }],
-        backups: tripData.backups
+        days: [{ title: "一日遊", items: [] }]
       });
-      prefs.expanded = {};
-      savePrefs();
       todaySel = null;
       setView("plan");
-      toast("一日遊建立好了，開始新增行程，或從口袋名單挑幾個吧", hasCurrent
-        ? { action: { label: "復原", fn: () => { restorePrevTrip(); refresh(); } } } : {});
+      toast("一日遊建立好了，開始新增行程，或從口袋名單挑幾個吧", {
+        action: { label: "復原", fn: () => { deleteTrip(t.id); refresh(); } }
+      });
     }
   });
 }

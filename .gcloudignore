@@ -1,0 +1,5 @@
+# 部署到 Cloud Run 時只上傳後端需要的檔案
+*
+!Dockerfile
+!requirements.txt
+!server.py

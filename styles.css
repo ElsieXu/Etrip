@@ -735,3 +735,59 @@ input[type=checkbox] { width: 20px; height: 20px; min-height: 0; accent-color: v
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ===== 我的行程 / 旅行回顧 / 雲端同步 ===== */
+.title-chev { width: 14px; height: 14px; margin-left: 4px; color: var(--muted); vertical-align: -1px; }
+.sheet-group { margin: 16px 2px 6px; font-size: 13px; color: var(--muted); font-weight: 700; }
+.new-trip-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.new-trip-row .btn { padding: 0 8px; font-size: 14px; }
+.list-btn.current { border-color: var(--primary); background: var(--primary-soft); }
+
+.review-card { border-color: var(--success); }
+.review-card h2 .i { color: var(--success); }
+.review-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 10px; }
+.review-stats div { display: flex; flex-direction: column; align-items: center; padding: 10px 4px; border-radius: 12px; background: var(--surface-2); text-align: center; }
+.review-stats b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.review-stats span { font-size: 12px; color: var(--muted); }
+
+.item-review { flex-basis: 100%; font-size: 13px; color: var(--text-2); }
+.stars { color: var(--star); letter-spacing: 1px; margin-right: 6px; }
+
+.review-fields { margin-top: 4px; border-top: 1px solid var(--border); padding-top: 10px; }
+.review-fields summary { cursor: pointer; font-weight: 700; font-size: 14px; color: var(--text-2); margin-bottom: 8px; }
+.star-input { display: flex; align-items: center; gap: 2px; margin-bottom: 12px; flex-wrap: wrap; }
+.star-input label { cursor: pointer; display: inline-flex; align-items: center; }
+.star-input input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.star-input label > span[aria-hidden] { font-size: 30px; line-height: 1; padding: 4px; color: var(--surface-3); transition: color .1s; }
+/* 選到的星星和它前面的星星都亮起來 */
+.star-input:has(input[value="1"]:checked) label:nth-child(-n+1) > span[aria-hidden],
+.star-input:has(input[value="2"]:checked) label:nth-child(-n+2) > span[aria-hidden],
+.star-input:has(input[value="3"]:checked) label:nth-child(-n+3) > span[aria-hidden],
+.star-input:has(input[value="4"]:checked) label:nth-child(-n+4) > span[aria-hidden],
+.star-input:has(input[value="5"]:checked) label:nth-child(-n+5) > span[aria-hidden] { color: var(--star); }
+.star-input input:focus-visible + span { outline: 2px solid var(--primary); border-radius: 6px; }
+.star-clear { margin-left: 8px; font-size: 13px; color: var(--muted); }
+.star-clear input:checked + span { color: var(--text); font-weight: 700; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.sync-status { margin-top: 10px; }
+.sync-status.ok { background: var(--success-soft); color: var(--success); font-weight: 600; }
+.sync-status.error { background: var(--danger-soft); color: var(--danger); font-weight: 600; }
+.code-box { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.sync-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 17px; letter-spacing: .08em; }
+.big-code {
+  margin: 12px 0; padding: 14px; border-radius: 12px; background: var(--surface-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 26px; font-weight: 800;
+  letter-spacing: .1em; text-align: center; user-select: all;
+}
+
+.collapsible-card { padding: 0; }
+.collapsible-card summary {
+  list-style: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 16px;
+}
+.collapsible-card summary::-webkit-details-marker { display: none; }
+.collapsible-card[open] .chev { transform: rotate(180deg); }
+.collapsible-body { padding: 0 16px 16px; }
+.collapsible-body hr { border: 0; border-top: 1px solid var(--border); margin: 16px 0; }
+.stack .field { margin-bottom: 4px; }

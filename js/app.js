@@ -48,20 +48,17 @@ function renderHeader() {
   } else if (phase === "after") {
     status = `<span class="pill">已結束</span>`;
   }
-  const range = n === 1 ? `${dayDate(0) ? formatDateLabel(dayDate(0)) + " · " : ""}一日遊`
-    : n && dayDate(0) ? `${formatDateLabel(dayDate(0))} – ${formatDateLabel(dayDate(n - 1))} · ${n} 天`
-    : n ? `${n} 天` : "";
+  const range = n ? tripRangeLabel(tripData) : "";
 
   $("#tripHeader").innerHTML = `
-    <button class="trip-title" data-action="trip-settings" title="行程設定">
-      <span class="trip-name">${esc(m.title || (n ? "我的旅程" : "還沒有行程"))}</span>
+    <button class="trip-title" data-action="trip-list" title="切換或新增行程">
+      <span class="trip-name">${esc(m.title || (n ? "我的旅程" : "還沒有行程"))}${icon("chevron", "title-chev")}</span>
       ${range ? `<span class="trip-range">${range}</span>` : `<span class="trip-range">行前功課 × 旅途隨行</span>`}
     </button>
     ${status}`;
 
-  // 工具分頁：有修改尚未同步時顯示小紅點
-  const dirty = m.updatedAt && m.updatedAt > (m.exportedAt || 0) && (n || tripData.backups.length);
-  $$('[data-nav="tools"]').forEach(b => b.classList.toggle("has-dot", !!dirty));
+  // 工具分頁：雲端同步有修改還沒上傳時顯示小點
+  updateSyncIndicators();
   // 口袋分頁顯示數量
   $$('[data-nav="pocket"] .nav-count').forEach(c => { c.textContent = tripData.backups.length || ""; });
 }
@@ -88,6 +85,11 @@ function initialView() {
 }
 
 function init() {
+  // 正在旅途中的行程優先打開
+  if (tripPhase() !== "during") {
+    const during = library.trips.find(t => tripPhaseOf(t) === "during");
+    if (during) selectTrip(during.id);
+  }
   buildNav();
   initSheet();
   initEvents();
@@ -95,6 +97,7 @@ function init() {
   checkIncomingLink();
   // 網站已經開著時點同步連結，只會改變 #hash，不會重新載入
   window.addEventListener("hashchange", checkIncomingLink);
+  initSync();
 
   // 每分鐘更新倒數；切回網站時如果換日了就重畫
   let lastDay = toISODate(new Date());

@@ -25,7 +25,7 @@ function renderToday() {
     const n = daysBetween(toISODate(new Date()), dayDate(0));
     banner = `<div class="banner">${icon(single ? "sun" : "plane")}<span>出發前預覽 · ${n === 1 ? "<b>明天</b>就出發" : `還有 <b>${n}</b> 天出發`}</span></div>`;
   } else if (phase === "after") {
-    banner = `<div class="banner muted">${icon("check")}<span>旅程已經結束，可以回顧一下去了哪些地方</span></div>`;
+    banner = `<div class="banner muted">${icon("check")}<span>旅程已經結束，補上評分和心得，留個紀錄吧</span><button class="btn sm" data-action="go" data-view="plan">看回顧</button></div>`;
   } else if (phase === "undated") {
     banner = `<div class="banner muted">${icon("calendar")}<span>還沒設定出發日，設定後打開網站就會自動跳到當天</span><button class="btn sm" data-action="trip-settings">設定</button></div>`;
   } else if (ti >= 0 && i !== ti) {

@@ -1,72 +1,72 @@
 // =========================================
-// tools.js — 「工具」頁：AI 匯入、同步到手機（QR / 連結）、備份、安裝
+// tools.js — 「工具」頁：AI 整理、雲端同步、傳送行程、備份、進階設定
 // =========================================
-
-function isDirty() {
-  const m = tripData.meta;
-  return !!m.updatedAt && m.updatedAt > (m.exportedAt || 0);
-}
-
-function syncStatusHTML() {
-  const m = tripData.meta;
-  return `<span>最後修改：${formatDateTime(m.updatedAt)}</span>
-    <span>最後匯出：${formatDateTime(m.exportedAt)}</span>
-    ${isDirty() ? `<b>有新的修改還沒同步</b>` : ""}`;
-}
 
 function renderTools() {
   wakeServer();
-  const m = tripData.meta;
-  const dirty = isDirty();
   const standalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone;
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const nTrips = library.trips.length;
 
   $("#view-tools").innerHTML = `
   <div class="tools-grid">
     <section class="card span-2">
       <div class="card-head"><h2>${icon("sparkles")}AI 整理行程</h2></div>
-      <p class="muted small">貼上機票、訂房確認信、或隨手寫的行程筆記，AI 會整理成每天的行程、住宿與交通。</p>
+      <p class="muted small">貼上機票、訂房確認信、或隨手寫的行程筆記，AI 會整理成每天的行程、住宿與交通，存成一個新行程。</p>
       <textarea id="rawInput" rows="6" placeholder="例：&#10;11/20 CI120 08:30 桃園→那霸&#10;住 Hotel Collective（國際通）&#10;Day1 首里城、國際通晚餐&#10;Day2 美麗海水族館、古宇利島…"></textarea>
       <button class="btn primary block" data-action="parse-run">${icon("sparkles")}開始整理</button>
     </section>
 
     <section class="card">
-      <div class="card-head"><h2>${icon("qr")}同步到手機</h2></div>
-      <p class="muted small">在電腦整理好之後，用手機相機掃描 QR Code，就能把行程和口袋名單一起帶走。之後有修改，再掃一次就好。</p>
-      <div class="sync-status ${dirty ? "warn" : ""}">${syncStatusHTML()}</div>
-      <div id="qrBox" class="qr-box" hidden></div>
-      <div class="btn-row">
-        <button class="btn primary" data-action="sync-qr">${icon("qr")}產生 QR Code</button>
-        <button class="btn" data-action="sync-copy">${icon("copy")}複製連結</button>
-        ${navigator.share ? `<button class="btn" data-action="sync-share">${icon("share")}分享</button>` : ""}
-      </div>
-      <p class="field-hint">行程太大放不進 QR Code 時，可以「複製連結」或「分享」，用 LINE 或 AirDrop 傳給自己，在手機上點開就會匯入。</p>
+      <div class="card-head"><h2>${icon("refresh")}雲端同步</h2></div>
+      ${syncEnabled() ? `
+        <p class="muted small">電腦和手機輸入同一組同步碼，修改後會自動同步，所有行程、口袋名單和旅行記錄都會帶著走。</p>
+        <p id="syncStatus" class="sync-status"></p>
+        <div class="code-box">
+          <span class="muted small">同步碼</span>
+          <b id="syncCode" class="sync-code">${esc(syncState.code.slice(0, 4))}-••••-••••</b>
+          <button class="btn sm ghost" data-action="sync-reveal">顯示</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn primary" data-action="sync-now">${icon("refresh")}立即同步</button>
+          <button class="btn" data-action="sync-add-device">${icon("qr")}加入另一台裝置</button>
+        </div>
+        <button class="btn sm ghost" data-action="sync-leave">在這台裝置停止同步</button>
+        <p class="field-hint">同步碼就像密碼，知道的人都能看到你的行程，請不要公開分享。</p>
+      ` : `
+        <p class="muted small">在電腦整理好，手機打開就是最新的；之前的旅行記錄也都在。不需要註冊帳號，只要一組同步碼。</p>
+        <div class="btn-row">
+          <button class="btn primary" data-action="sync-create">${icon("refresh")}開啟雲端同步</button>
+          <button class="btn" data-action="sync-join">我已經有同步碼</button>
+        </div>
+        <p class="field-hint">需要先把伺服器搬到 Google Cloud Run（見 DEPLOY.md），並在「進階設定」填好伺服器網址。</p>
+      `}
     </section>
 
     <section class="card">
       <div class="card-head"><h2>${icon("download")}備份與匯出</h2></div>
       <div class="sheet-list">
-        <button class="list-btn" data-action="backup-download">${icon("download")}<span><b>下載備份檔（.json）</b><small>完整資料，之後可以用「匯入備份檔」還原</small></span></button>
-        <label class="list-btn" for="importFile">${icon("upload")}<span><b>匯入備份檔</b><small>選擇之前下載的 .json 檔</small></span></label>
+        <button class="list-btn" data-action="backup-download">${icon("download")}<span><b>下載備份檔（.json）</b><small>全部 ${nTrips} 個行程和口袋名單</small></span></button>
+        <label class="list-btn" for="importFile">${icon("upload")}<span><b>匯入備份檔</b><small>和現有資料合併，不會覆蓋</small></span></label>
         <input type="file" id="importFile" accept=".json,application/json" hidden>
-        <button class="list-btn" data-action="text-download">${icon("download")}<span><b>下載文字版（.txt）</b><small>方便列印或貼到記事本</small></span></button>
-        <button class="list-btn" data-action="text-copy">${icon("copy")}<span><b>複製行程文字</b><small>貼到 LINE 或筆記</small></span></button>
-        ${hasPrevTrip() ? `<button class="list-btn" data-action="restore-prev">${icon("undo")}<span><b>復原上一版行程</b><small>回到上次「取代」或「匯入」之前的狀態</small></span></button>` : ""}
+        <button class="list-btn" data-action="text-download">${icon("download")}<span><b>下載目前行程文字版（.txt）</b><small>方便列印或貼到記事本</small></span></button>
+        <button class="list-btn" data-action="text-copy">${icon("copy")}<span><b>複製目前行程文字</b><small>貼到 LINE 或筆記</small></span></button>
+        ${hasPrevLibrary() ? `<button class="list-btn" data-action="restore-prev">${icon("undo")}<span><b>復原上一版</b><small>回到上次匯入、加入同步或清除之前的狀態</small></span></button>` : ""}
       </div>
     </section>
 
-    <section class="card">
-      <div class="card-head"><h2>${icon("settings")}行程設定</h2></div>
-      <div class="info-rows">
-        <div class="info-row"><span class="info-key">名稱</span><span class="info-val">${esc(m.title) || "—"}</span></div>
-        <div class="info-row"><span class="info-key">目的地</span><span class="info-val">${esc(m.region) || "—"}</span></div>
-        <div class="info-row"><span class="info-key">出發日</span><span class="info-val">${m.startDate ? formatDateLabel(m.startDate) : "—"}</span></div>
+    <details class="card collapsible-card">
+      <summary><h2>${icon("qr")}不用雲端：傳送這個行程</h2>${icon("chevron", "chev")}</summary>
+      <div class="collapsible-body">
+        <p class="muted small">產生 QR Code 或連結，把「${esc(tripData.meta.title || "目前的行程")}」和口袋名單傳到另一台裝置，對方會合併進去。</p>
+        <div id="qrBox" class="qr-box" hidden></div>
+        <div class="btn-row">
+          <button class="btn" data-action="share-qr">${icon("qr")}產生 QR Code</button>
+          <button class="btn" data-action="share-copy">${icon("copy")}複製連結</button>
+          ${navigator.share ? `<button class="btn" data-action="share-send">${icon("share")}分享</button>` : ""}
+        </div>
       </div>
-      <div class="btn-row">
-        <button class="btn" data-action="trip-settings">${icon("edit")}修改設定</button>
-        <button class="btn" data-action="daytrip-new">${icon("sun")}建立一日遊</button>
-      </div>
-    </section>
+    </details>
 
     <section class="card">
       <div class="card-head"><h2>${icon("phoneDevice")}加到手機主畫面</h2></div>
@@ -76,14 +76,28 @@ function renderTools() {
         : `<p class="muted small">在手機瀏覽器的選單中選「加到主畫面」或「安裝應用程式」。之後沒有網路也能看行程。</p>`}
     </section>
 
-    <section class="card danger-zone span-2">
-      <div class="card-head"><h2>清除資料</h2></div>
-      <p class="muted small">刪除這個瀏覽器裡的所有行程與口袋名單。建議先下載備份檔。</p>
-      <button class="btn danger" data-action="clear-all">${icon("trash")}清除所有資料</button>
-    </section>
+    <details class="card collapsible-card span-2">
+      <summary><h2>${icon("settings")}進階設定</h2>${icon("chevron", "chev")}</summary>
+      <div class="collapsible-body">
+        <form data-form="api-base" class="stack">
+          <label class="field" for="apiBaseInput"><span class="field-label">伺服器網址</span>
+            <input id="apiBaseInput" name="apiBase" type="url" placeholder="${esc(DEFAULT_API_BASE)}" value="${esc(prefs.apiBase)}">
+            <span class="field-hint">Cloud Run 部署完成後顯示的 Service URL。留空就使用預設值（${esc(DEFAULT_API_BASE)}）。</span>
+          </label>
+          <div class="btn-row">
+            <button class="btn" type="submit">儲存</button>
+            <button class="btn ghost" type="button" data-action="api-test">測試連線</button>
+          </div>
+        </form>
+        <hr>
+        <p class="muted small">清除這個瀏覽器裡的所有行程與口袋名單（雲端同步會在這台裝置關閉，雲端和其他裝置的資料不受影響）。</p>
+        <button class="btn danger" data-action="clear-all">${icon("trash")}清除這台裝置的資料</button>
+      </div>
+    </details>
   </div>`;
 
   $("#importFile").addEventListener("change", onImportFile);
+  updateSyncIndicators();
 }
 
 // ===== AI 整理行程 =====
@@ -93,7 +107,7 @@ ACTIONS["parse-run"] = async el => {
   if (!text) return toast("請先貼上行程內容");
   setBusy(el, true, "AI 整理中…");
   try {
-    const ai = await aiParseTrip(text, { onSlow: () => setBusy(el, true, "伺服器喚醒中，第一次約需 30~60 秒…") });
+    const ai = await aiParseTrip(text, { onSlow: () => setBusy(el, true, "伺服器喚醒中，請稍候…") });
     setBusy(el, false);
     const parsed = normalizeTrip({
       meta: { title: ai.title, region: ai.destination || ai.region, startDate: ai.start_date },
@@ -111,7 +125,7 @@ ACTIONS["parse-run"] = async el => {
 
 function showParsePreview(parsed) {
   const itemCount = parsed.days.reduce((n, d) => n + d.items.length, 0);
-  const hasCurrent = tripData.days.length > 0;
+  const canMerge = library.trips.includes(tripData) && tripData.days.length > 0;
   openSheet({
     title: "整理完成",
     body: `
@@ -126,15 +140,15 @@ function showParsePreview(parsed) {
         ${parsed.days.slice(0, 3).map(d => `<p class="small"><b>${esc(d.title)}</b>：${d.items.map(i => esc(i.text)).join("、") || "—"}</p>`).join("")}
         ${parsed.days.length > 3 ? `<p class="muted small">…還有 ${parsed.days.length - 3} 天</p>` : ""}
       </div>
-      ${hasCurrent ? `<p class="muted small">目前已經有 ${tripData.days.length} 天的行程。不論選哪個，口袋名單和訂位 / 緊急聯絡資訊都會保留。</p>` : ""}`,
-    actions: hasCurrent
-      ? [{ label: "取消", value: "cancel", variant: "ghost" }, { label: "加在後面", value: "merge" }, { label: "取代目前行程", value: "replace", variant: "primary" }]
-      : [{ label: "取消", value: "cancel", variant: "ghost" }, { label: "建立行程", value: "replace", variant: "primary" }],
+      ${canMerge ? `<p class="muted small">也可以加在目前的「${esc(tripData.meta.title || "行程")}」後面。</p>` : ""}`,
+    actions: [
+      { label: "取消", value: "cancel", variant: "ghost" },
+      ...(canMerge ? [{ label: "加到目前行程", value: "merge" }] : []),
+      { label: "存成新行程", value: "new", variant: "primary" }
+    ],
     onAction(v) {
-      if (v === "replace") {
-        const keep = { backups: tripData.backups, info: tripData.info };
-        replaceTrip({ ...parsed, ...keep, hotels: parsed.hotels });
-        prefs.expanded = {};
+      if (v === "new") {
+        createTrip(parsed);
       } else if (v === "merge") {
         tripData.days.push(...parsed.days);
         const names = new Set(tripData.hotels.map(h => h.name));
@@ -144,24 +158,105 @@ function showParsePreview(parsed) {
         for (const k of ["title", "region", "startDate"]) if (!tripData.meta[k]) tripData.meta[k] = parsed.meta[k];
         saveTrip();
       } else return;
-      saveTrip(); savePrefs();
       const raw = $("#rawInput"); if (raw) raw.value = "";
+      todaySel = null;
       setView("plan");
-      toast(v === "merge" ? `已加入 ${parsed.days.length} 天` : "行程建立完成！正在補上地點座標…", v === "replace" && hasPrevTrip()
-        ? { action: { label: "復原", fn: () => { restorePrevTrip(); refresh(); } } } : {});
+      toast(v === "merge" ? `已加入 ${parsed.days.length} 天，正在補上地點座標…` : "新行程建立好了！正在補上地點座標…");
       enrichAndSave(tripData.days.flatMap(d => d.items));
     }
   });
 }
 
-// ===== 同步：分享連結 / QR Code =====
+// ===== 雲端同步 =====
 
-/** 精簡資料：去掉空欄位與 id，讓 QR Code 裝得下 */
+ACTIONS["sync-create"] = async el => {
+  setBusy(el, true, "建立中…");
+  try {
+    await createSyncCode();
+    renderTools();
+    showSyncCodeSheet("同步已開啟");
+  } catch (e) {
+    setBusy(el, false);
+    toast(e.message);
+  }
+};
+
+ACTIONS["sync-join"] = () => openJoinSheet();
+
+function openJoinSheet(prefill = "") {
+  openSheet({
+    title: "輸入同步碼",
+    body: `
+      ${field({ name: "code", label: "同步碼", value: prefill, placeholder: "XXXX-XXXX-XXXX", required: true, autofocus: true, hint: "在另一台裝置的「工具 → 雲端同步 → 加入另一台裝置」可以看到" })}
+      <p class="muted small">這台裝置上的行程和口袋名單會和雲端合併，不會被刪除。</p>`,
+    actions: [{ label: "取消", value: "cancel", variant: "ghost" }, { label: "加入同步", value: "join", variant: "primary" }],
+    onAction(v, d) {
+      if (v !== "join") return;
+      toast("同步中…");
+      joinSyncCode(d.code)
+        .then(() => { refresh(); toast("已加入同步！"); })
+        .catch(e => toast(e.message));
+    }
+  });
+}
+
+function syncLink() { return `${shareBaseUrl()}#sync=${syncState.code}`; }
+
+function showSyncCodeSheet(title = "加入另一台裝置") {
+  let qrSvg = "";
+  try {
+    const qr = qrcode(0, "M");
+    qr.addData(syncLink());
+    qr.make();
+    qrSvg = qr.createSvgTag({ cellSize: 4, margin: 8, scalable: true });
+  } catch (e) { /* ignore */ }
+  openSheet({
+    title,
+    body: `
+      <p>在另一台裝置用相機掃描 QR Code，或打開 Etrip 後到「工具 → 雲端同步 → 我已經有同步碼」輸入：</p>
+      <p class="big-code">${esc(syncState.code)}</p>
+      ${qrSvg ? `<div class="qr-box">${qrSvg}</div>` : ""}
+      <p class="field-hint">同步碼就像密碼，請不要公開分享。</p>`,
+    actions: [{ label: "複製同步碼", value: "copy" }, { label: "完成", value: "done", variant: "primary" }],
+    onAction(v) {
+      if (v === "copy") { copyText(syncState.code).then(ok => toast(ok ? "已複製同步碼" : "複製失敗")); return false; }
+    }
+  });
+}
+
+ACTIONS["sync-add-device"] = () => showSyncCodeSheet();
+ACTIONS["sync-reveal"] = el => {
+  $("#syncCode").textContent = syncState.code;
+  el.remove();
+};
+ACTIONS["sync-now"] = async el => {
+  setBusy(el, true, "同步中…");
+  await syncNow({ silent: false });
+  setBusy(el, false);
+  updateSyncIndicators();
+};
+ACTIONS["sync-leave"] = () => {
+  openSheet({
+    title: "在這台裝置停止同步？",
+    body: `<p>這台裝置上的資料會保留，只是之後不會再自動同步。雲端和其他裝置的資料不受影響，之後輸入同一組同步碼就能再加入。</p>`,
+    actions: [{ label: "取消", value: "cancel", variant: "ghost" }, { label: "停止同步", value: "leave", variant: "danger" }],
+    onAction(v) {
+      if (v !== "leave") return;
+      leaveSync();
+      renderTools();
+      toast("這台裝置已停止同步");
+    }
+  });
+};
+
+// ===== 不用雲端：傳送一個行程（QR / 連結） =====
+
+/** 精簡資料：去掉空欄位，讓 QR Code 裝得下 */
 function compactForShare(t, level = 0) {
   const clean = o => {
     const out = {};
     for (const [k, v] of Object.entries(o)) {
-      if (v === "" || v == null || v === false || (Array.isArray(v) && !v.length)) continue;
+      if (v === "" || v == null || v === false || v === 0 || (Array.isArray(v) && !v.length)) continue;
       out[k] = v;
     }
     return out;
@@ -170,18 +265,22 @@ function compactForShare(t, level = 0) {
   const pid = p => (level >= 1 ? "" : p);
   return clean({
     v: SCHEMA_VERSION,
-    meta: clean({ title: t.meta.title, region: t.meta.region, startDate: t.meta.startDate, updatedAt: t.meta.updatedAt }),
+    id: t.id,
+    meta: clean({ title: t.meta.title, region: t.meta.region, startDate: t.meta.startDate, albumUrl: t.meta.albumUrl, updatedAt: t.meta.updatedAt }),
     flight: clean(t.flight),
     hotels: t.hotels.map(h => clean({ ...h, id: "" })),
     info: clean(t.info),
     days: t.days.map(d => clean({
       title: d.title, date: d.date,
-      items: d.items.map(it => clean({ time: it.time, text: it.text, note: it.note, done: it.done, lat: r5(it.lat), lng: r5(it.lng), placeId: pid(it.placeId) }))
+      items: d.items.map(it => clean({
+        time: it.time, text: it.text, note: it.note, done: it.done, rating: it.rating, review: it.review,
+        lat: r5(it.lat), lng: r5(it.lng), placeId: pid(it.placeId)
+      }))
     })),
-    backups: t.backups.map(b => clean({
-      name: b.name, category: b.category === "other" ? "" : b.category, area: b.area, note: b.note, source: b.source,
+    backups: library.backups.map(b => clean({
+      id: b.id, name: b.name, category: b.category === "other" ? "" : b.category, area: b.area, note: b.note, source: b.source,
       priority: b.priority === "must" ? "must" : "", rainy: b.rainy, status: b.status === "todo" ? "" : b.status,
-      lat: r5(b.lat), lng: r5(b.lng), placeId: pid(b.placeId), createdAt: b.createdAt
+      lat: r5(b.lat), lng: r5(b.lng), placeId: pid(b.placeId), createdAt: b.createdAt, updatedAt: b.updatedAt
     }))
   });
 }
@@ -195,10 +294,7 @@ function buildShareLink(level = 0) {
 
 function markExported() {
   tripData.meta.exportedAt = Date.now();
-  saveTrip({ touch: false });
-  renderHeader();
-  const box = $(".sync-status");
-  if (box) { box.classList.remove("warn"); box.innerHTML = syncStatusHTML(); }
+  writeLibrary();
 }
 
 function warnIfLocalFile() {
@@ -209,8 +305,8 @@ function warnIfLocalFile() {
   return false;
 }
 
-ACTIONS["sync-qr"] = () => {
-  if (!tripData.days.length && !tripData.backups.length) return toast("還沒有行程可以同步");
+ACTIONS["share-qr"] = () => {
+  if (!tripHasContent(tripData) && !library.backups.length) return toast("目前沒有行程可以傳送");
   warnIfLocalFile();
   const QR_MAX = 2900; // QR Code 最大容量約 2953 字元
   let link = "", level = 0;
@@ -221,7 +317,7 @@ ACTIONS["sync-qr"] = () => {
   const box = $("#qrBox");
   box.hidden = false;
   if (link.length > QR_MAX) {
-    box.innerHTML = `<p class="warn-text">行程內容太多，放不進 QR Code 😢<br>請改用「複製連結」或「分享」傳給自己，或下載備份檔。</p>`;
+    box.innerHTML = `<p class="warn-text">內容太多，放不進 QR Code。請改用「複製連結」或「分享」傳給自己，或開啟雲端同步。</p>`;
     return;
   }
   try {
@@ -238,14 +334,14 @@ ACTIONS["sync-qr"] = () => {
   }
 };
 
-ACTIONS["sync-copy"] = async () => {
+ACTIONS["share-copy"] = async () => {
   if (warnIfLocalFile()) return;
   const ok = await copyText(buildShareLink(0));
   if (ok) { markExported(); toast("已複製連結，傳給自己後在手機上點開即可匯入"); }
   else toast("複製失敗");
 };
 
-ACTIONS["sync-share"] = async () => {
+ACTIONS["share-send"] = async () => {
   if (warnIfLocalFile()) return;
   try {
     await navigator.share({ title: tripData.meta.title || "Etrip 行程", url: buildShareLink(0) });
@@ -253,68 +349,79 @@ ACTIONS["sync-share"] = async () => {
   } catch (e) { /* 使用者取消 */ }
 };
 
-/** 開啟網站時，如果網址帶有 #t=...，就是從另一台裝置傳來的行程 */
+/** 開啟網站時檢查網址：#t=...（傳來的行程）或 #sync=...（同步碼） */
 function checkIncomingLink() {
-  const m = location.hash.match(/^#t=(.+)$/);
-  if (!m) return false;
+  const h = location.hash;
+  const t = h.match(/^#t=(.+)$/);
+  const s = h.match(/^#sync=([A-Za-z0-9-]+)$/);
+  if (!t && !s) return false;
   history.replaceState(null, "", location.pathname + location.search);
-  let incoming;
+  if (s) {
+    if (syncEnabled()) { toast("這台裝置已經在同步了"); return true; }
+    openJoinSheet(s[1]);
+    return true;
+  }
+  let raw;
   try {
-    incoming = normalizeTrip(JSON.parse(LZString.decompressFromEncodedURIComponent(m[1])));
+    raw = JSON.parse(LZString.decompressFromEncodedURIComponent(t[1]));
   } catch (e) {
-    toast("這個同步連結好像不完整，請重新產生一次");
+    toast("這個連結好像不完整，請重新產生一次");
     return false;
   }
-  confirmImport(incoming, "收到行程");
+  confirmImportTrip(raw);
   return true;
 }
 
-function confirmImport(incoming, title) {
-  // 依名稱把行程項目和口袋名單重新連結
-  const byName = new Map(incoming.backups.map(b => [b.name, b.id]));
-  incoming.days.forEach(d => d.items.forEach(it => { if (!it.backupId && byName.has(it.text)) it.backupId = byName.get(it.text); }));
-
-  const apply = () => {
-    replaceTrip(incoming);
-    prefs.expanded = {};
-    savePrefs();
-    todaySel = null;
-    setView(tripPhase() === "during" ? "today" : "plan");
-    toast("匯入完成！", hasPrevTrip() ? { action: { label: "復原", fn: () => { restorePrevTrip(); refresh(); } } } : {});
-    const missing = [...incoming.days.flatMap(d => d.items), ...incoming.backups].filter(x => x.lat == null);
-    if (missing.length) enrichAndSave(missing);
-  };
-
-  if (!tripData.days.length && !tripData.backups.length) return apply();
-
+/** 收到單一行程：同一個行程就更新，口袋名單合併 */
+function confirmImportTrip(raw) {
+  const incoming = normalizeTrip(raw);
+  const backups = normalizeBackups(raw.backups);
   const items = incoming.days.reduce((n, d) => n + d.items.length, 0);
+  const exists = library.trips.find(x => x.id === incoming.id);
   openSheet({
-    title,
+    title: "收到行程",
     body: `
       <div class="preview">
         <h3>${esc(incoming.meta.title || "（未命名行程）")}</h3>
         <ul class="preview-stats">
-          <li>${icon("calendar")}${incoming.days.length} 天、${items} 個行程</li>
-          <li>${icon("bookmark")}口袋名單 ${incoming.backups.length} 個</li>
-          ${incoming.meta.updatedAt ? `<li>${icon("clock")}最後修改：${formatDateTime(incoming.meta.updatedAt)}</li>` : ""}
+          <li>${icon("calendar")}${tripRangeLabel(incoming)}、${items} 個行程</li>
+          <li>${icon("bookmark")}口袋名單 ${backups.length} 個（會合併，不會覆蓋）</li>
         </ul>
       </div>
-      <p class="muted small">要用這份取代這台裝置上目前的資料嗎？目前的資料會先保留一份，之後可以在「工具 → 復原上一版行程」找回。</p>`,
-    actions: [{ label: "先不要", value: "cancel", variant: "ghost" }, { label: "取代並匯入", value: "ok", variant: "primary" }],
-    onAction(v) { if (v === "ok") apply(); }
+      <p class="muted small">${exists ? "這台裝置已經有這個行程，會更新成收到的版本。" : "會新增成一個行程。"}</p>`,
+    actions: [{ label: "先不要", value: "cancel", variant: "ghost" }, { label: exists ? "更新" : "加入", value: "ok", variant: "primary" }],
+    onAction(v) {
+      if (v !== "ok") return;
+      snapshotLibrary();
+      incoming.meta.updatedAt = Date.now();   // 使用者明確要收下這份，以它為準
+      const merged = mergeLibraries(library, { ...emptyLibrary(), trips: [incoming], backups });
+      merged.currentTripId = incoming.id;
+      setLibrary(merged);
+      saveTrip();
+      relinkBackups(tripData);
+      todaySel = null;
+      setView(tripPhase() === "during" ? "today" : "plan");
+      toast("已加入！", { action: { label: "復原", fn: () => { restorePrevLibrary(); refresh(); } } });
+      const missing = [...tripData.days.flatMap(d => d.items), ...library.backups].filter(x => x.lat == null);
+      if (missing.length) enrichAndSave(missing);
+    }
   });
+}
+
+/** 依名稱把行程項目和口袋名單重新連結 */
+function relinkBackups(t) {
+  const byName = new Map(library.backups.map(b => [b.name, b.id]));
+  t.days.forEach(d => d.items.forEach(it => { if (!it.backupId && byName.has(it.text)) it.backupId = byName.get(it.text); }));
 }
 
 // ===== 備份檔 =====
 
-function fileSafeTitle() {
-  return (tripData.meta.title || "My_Trip").replace(/[\\/:*?"<>|\s]+/g, "_");
+function fileSafeTitle(name) {
+  return (name || "Etrip").replace(/[\\/:*?"<>|\s]+/g, "_");
 }
 
 ACTIONS["backup-download"] = () => {
-  downloadFile(`Etrip_${fileSafeTitle()}_${toISODate(new Date())}.json`, JSON.stringify(tripData, null, 2), "application/json");
-  markExported();
-  refresh();
+  downloadFile(`Etrip_備份_${toISODate(new Date())}.json`, JSON.stringify(library, null, 2), "application/json");
 };
 
 function onImportFile(e) {
@@ -323,17 +430,60 @@ function onImportFile(e) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
+    let incoming;
     try {
-      confirmImport(normalizeTrip(JSON.parse(reader.result)), "匯入備份檔");
+      incoming = normalizeLibrary(JSON.parse(reader.result));
     } catch (err) {
-      toast("這個檔案無法讀取，請確認是 Etrip 的備份檔（.json）");
+      return toast("這個檔案無法讀取，請確認是 Etrip 的備份檔（.json）");
     }
+    openSheet({
+      title: "匯入備份檔",
+      body: `<p>檔案裡有 <b>${incoming.trips.length}</b> 個行程、<b>${incoming.backups.length}</b> 個口袋名單地點。</p>
+        <p class="muted small">會和這台裝置的資料合併：同一個行程或地點保留較新的版本，其他的都會保留。</p>`,
+      actions: [{ label: "取消", value: "cancel", variant: "ghost" }, { label: "合併匯入", value: "ok", variant: "primary" }],
+      onAction(v) {
+        if (v !== "ok") return;
+        snapshotLibrary();
+        const merged = mergeLibraries(library, incoming);
+        setLibrary(merged);
+        saveTrip();
+        refresh();
+        toast("匯入完成", { action: { label: "復原", fn: () => { restorePrevLibrary(); refresh(); } } });
+      }
+    });
   };
   reader.readAsText(file);
 }
 
 ACTIONS["restore-prev"] = () => {
-  if (restorePrevTrip()) { refresh(); toast("已復原上一版（再按一次可以切換回來）"); }
+  if (restorePrevLibrary()) { refresh(); toast("已復原上一版（再按一次可以切換回來）"); }
+};
+
+// ===== 進階設定 =====
+
+FORMS["api-base"] = form => {
+  const v = str(form.apiBase.value).replace(/\/+$/, "");
+  if (v && !isUrl(v)) return toast("網址要以 https:// 開頭");
+  prefs.apiBase = v;
+  savePrefs();
+  _lastWake = 0;
+  toast(v ? "已儲存伺服器網址" : "已改回預設伺服器");
+};
+
+ACTIONS["api-test"] = async el => {
+  const input = $("#apiBaseInput");
+  const before = prefs.apiBase;
+  prefs.apiBase = str(input.value).replace(/\/+$/, "");
+  setBusy(el, true, "測試中…");
+  try {
+    const r = await apiRequest("GET", "/health", null, { timeout: 60000 });
+    toast(r && r.ok ? `連線成功（AI：${r.ai || "—"}${r.sync ? "，支援雲端同步" : "，不支援雲端同步"}）` : "伺服器有回應，但版本可能太舊");
+  } catch (e) {
+    toast(e.status === 404 ? "伺服器有回應，但還是舊版（沒有 /health），請重新部署" : e.message);
+  } finally {
+    prefs.apiBase = before;
+    setBusy(el, false);
+  }
 };
 
 // ===== 文字版 =====
@@ -382,7 +532,7 @@ function buildTripText() {
 }
 
 ACTIONS["text-download"] = () => {
-  downloadFile(`Etrip_${fileSafeTitle()}_${toISODate(new Date())}.txt`, buildTripText(), "text/plain;charset=utf-8");
+  downloadFile(`Etrip_${fileSafeTitle(tripData.meta.title)}_${toISODate(new Date())}.txt`, buildTripText(), "text/plain;charset=utf-8");
 };
 
 ACTIONS["text-copy"] = async () => {
@@ -402,12 +552,15 @@ ACTIONS["install"] = async () => {
 
 ACTIONS["clear-all"] = () => {
   openSheet({
-    title: "清除所有資料？",
-    body: `<p>會刪除這個瀏覽器裡的所有行程與口袋名單。清除後可以在「工具 → 復原上一版行程」救回一次。</p>`,
+    title: "清除這台裝置的資料？",
+    body: `<p>會刪除這個瀏覽器裡的所有行程與口袋名單${syncEnabled() ? "，並在這台裝置停止雲端同步（雲端和其他裝置的資料不受影響）" : ""}。清除後可以在「工具 → 復原上一版」救回一次。</p>`,
     actions: [{ label: "取消", value: "cancel", variant: "ghost" }, { label: "清除", value: "clear", variant: "danger" }],
     onAction(v) {
       if (v !== "clear") return;
-      replaceTrip(emptyTrip());
+      snapshotLibrary();
+      leaveSync();
+      setLibrary(emptyLibrary());
+      writeLibrary();
       prefs.expanded = {};
       savePrefs();
       refresh();

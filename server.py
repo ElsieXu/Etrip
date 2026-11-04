@@ -1,72 +1,150 @@
 """
-Etrip 後端（Flask）
+Etrip 後端（Flask，部署在 Google Cloud Run）
+
 - /parse              AI 把雜亂的行程文字整理成 JSON
 - /extract_places     AI 從文字中抽出景點 / 餐廳 / 商店
-- /extract_url        先抓網頁內容，再抽出地點
+- /extract_url        讀取網址抽出地點；YouTube 影片會直接讓 Gemini 看影片
 - /enrich_locations   地點名稱轉座標（Google Geocoding API）
-- /health             給前端提早喚醒 Render 用
+- /sync               雲端同步（Firestore）：建立同步碼、讀取、儲存
+- /health             健康檢查 / 提早喚醒
 
 環境變數：
-  OPENAI_API_KEY       必填
+  GEMINI_API_KEY       Gemini API 金鑰（AI 功能）
+  GEMINI_MODEL         選填，預設 gemini-3.5-flash-lite
+  GEMINI_VIDEO_MODEL   選填，看 YouTube 影片用的模型，預設同 GEMINI_MODEL
   GOOGLE_MAPS_API_KEY  補座標用
-  OPENAI_MODEL         選填，預設 gpt-4o-mini
-  ALLOWED_ORIGINS      選填，限制哪些網站可以呼叫，用逗號分隔
-                       例如 https://elsiexu.github.io  （不設定 = 全部允許）
+  ALLOWED_ORIGINS      選填，只允許自己的網站呼叫，逗號分隔
+                       例如 https://elsiexu.github.io
+  SYNC_COLLECTION      選填，Firestore 集合名稱，預設 etrip_sync
+
+  （選用）AI_PROVIDER=openai 搭配 OPENAI_API_KEY、OPENAI_MODEL，可以改回 OpenAI
 """
 
+import hashlib
 import ipaddress
 import json
 import os
+import re
+import secrets
 import socket
+import zlib
 from datetime import date
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from openai import OpenAI
 
 load_dotenv()
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
 
 _origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 CORS(app, resources={r"/*": {"origins": _origins or "*"}})
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 GOOGLE_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
+AI_PROVIDER = os.getenv("AI_PROVIDER") or ("gemini" if os.getenv("GEMINI_API_KEY") else "openai")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+GEMINI_VIDEO_MODEL = os.getenv("GEMINI_VIDEO_MODEL", GEMINI_MODEL)
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+SYNC_COLLECTION = os.getenv("SYNC_COLLECTION", "etrip_sync")
 
-MAX_TEXT = 15000      # 送給 AI 的文字上限，避免 token 爆量
-MAX_PLACES = 80       # 一次最多補幾個座標
+MAX_TEXT = 15000        # 送給 AI 的文字上限
+MAX_PLACES = 80         # 一次最多補幾個座標
+MAX_SYNC_BYTES = 900_000  # Firestore 單筆上限約 1MB（壓縮後）
 
 CATEGORY_HINT = "category 只能是 food（餐廳小吃）、cafe（咖啡甜點）、sight（景點）、shop（購物）、other 其中之一"
 
 
-def ask_json(prompt):
-    """呼叫 OpenAI 並要求回傳 JSON 物件"""
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"},
-        temperature=0.2,
-    )
-    content = response.choices[0].message.content or "{}"
+class AIError(Exception):
+    pass
+
+
+# ===============================
+# AI 呼叫（Gemini 為主，OpenAI 備用）
+# ===============================
+
+_gemini = None
+_openai = None
+
+
+def gemini_client():
+    global _gemini
+    if _gemini is None:
+        from google import genai
+        _gemini = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    return _gemini
+
+
+def parse_json_text(text):
+    text = (text or "").strip()
+    text = re.sub(r"^```(?:json)?|```$", "", text, flags=re.M).strip()
     try:
-        return json.loads(content)
+        return json.loads(text)
     except json.JSONDecodeError:
-        return {}
+        m = re.search(r"\{[\s\S]*\}", text)
+        if m:
+            try:
+                return json.loads(m.group(0))
+            except json.JSONDecodeError:
+                pass
+    return {}
+
+
+def ask_json(prompt, video_url=None):
+    """送出提示並取得 JSON 物件；video_url 是 YouTube 網址時會一起送影片"""
+    if AI_PROVIDER == "openai":
+        if video_url:
+            raise AIError("目前的 AI 設定不支援讀取影片，請改用 Gemini")
+        global _openai
+        if _openai is None:
+            from openai import OpenAI
+            _openai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        res = _openai.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+        )
+        return parse_json_text(res.choices[0].message.content)
+
+    from google.genai import types
+    contents = [prompt]
+    config = {"response_mime_type": "application/json", "temperature": 0.2}
+    model = GEMINI_MODEL
+    if video_url:
+        # 影片用低解析度：找地點不需要高畫質，費用約只要三分之一
+        contents = [types.Part(file_data=types.FileData(file_uri=video_url)), prompt]
+        config["media_resolution"] = types.MediaResolution.MEDIA_RESOLUTION_LOW
+        model = GEMINI_VIDEO_MODEL
+    res = gemini_client().models.generate_content(
+        model=model, contents=contents, config=types.GenerateContentConfig(**config)
+    )
+    return parse_json_text(res.text)
 
 
 def error(message, status=400):
     return jsonify({"error": message}), status
 
 
+def ai_failed(e, where):
+    print(f"{where} 錯誤:", repr(e))
+    msg = str(e)
+    if isinstance(e, AIError):
+        return error(msg, 400)
+    if "API key" in msg or "PERMISSION_DENIED" in msg or "401" in msg:
+        return error("AI 金鑰設定有問題，請檢查伺服器的 GEMINI_API_KEY", 502)
+    if "RESOURCE_EXHAUSTED" in msg or "429" in msg:
+        return error("AI 使用量暫時達到上限，請稍後再試", 429)
+    return error("AI 服務暫時無法使用，請稍後再試", 502)
+
+
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "ai": AI_PROVIDER, "sync": True})
 
 
 # ===============================
@@ -111,9 +189,7 @@ def parse_trip():
     try:
         result = ask_json(prompt)
     except Exception as e:  # noqa: BLE001
-        print("parse 錯誤:", e)
-        return error("AI 服務暫時無法使用，請稍後再試", 502)
-
+        return ai_failed(e, "parse")
     # data 給新版前端；result（字串）保留給舊版前端相容
     return jsonify({"data": result, "result": json.dumps(result, ensure_ascii=False)})
 
@@ -122,25 +198,31 @@ def parse_trip():
 # AI 抽取景點
 # ===============================
 
-def extract_places_from_text(text, title=""):
-    prompt = f"""
-從以下旅遊內容中找出所有「可以實際前往」的景點、餐廳、咖啡廳或商店。
-
+PLACES_FORMAT = f"""
 回傳 JSON 物件：
-{{"places": [{{"name": "店名或景點名稱（用原文常見寫法，方便在 Google 地圖搜尋）", "category": "food", "area": "所在城市或區域，不知道就空字串", "note": "一句話重點，例如必點菜色、特色，沒有就空字串"}}]}}
+{{"places": [{{"name": "店名或景點名稱（用常見寫法，方便在 Google 地圖搜尋）", "category": "food", "area": "所在城市或區域，不知道就空字串", "note": "一句話重點，例如必點菜色、特色，沒有就空字串"}}]}}
 
 規則：
 - {CATEGORY_HINT}
 - 同一個地點只列一次；不要列出國家、城市名稱本身或連鎖品牌總稱。
 - 找不到任何地點就回傳 {{"places": []}}。
+"""
 
+
+def clean_places(result):
+    places = result.get("places", []) if isinstance(result, dict) else []
+    return [p for p in places if isinstance(p, dict) and p.get("name")]
+
+
+def extract_places_from_text(text, title=""):
+    prompt = f"""
+從以下旅遊內容中找出所有「可以實際前往」的景點、餐廳、咖啡廳或商店。
+{PLACES_FORMAT}
 {f"文章標題：{title}" if title else ""}
 內容：
 {text}
 """
-    result = ask_json(prompt)
-    places = result.get("places", []) if isinstance(result, dict) else []
-    return [p for p in places if isinstance(p, dict) and p.get("name")]
+    return clean_places(ask_json(prompt))
 
 
 @app.route("/extract_places", methods=["POST"])
@@ -152,13 +234,40 @@ def extract_places():
     try:
         return jsonify({"places": extract_places_from_text(text)})
     except Exception as e:  # noqa: BLE001
-        print("extract_places 錯誤:", e)
-        return error("AI 服務暫時無法使用，請稍後再試", 502)
+        return ai_failed(e, "extract_places")
 
 
 # ===============================
-# URL 抽取景點
+# 網址 / YouTube 抽取景點
 # ===============================
+
+def youtube_url(url):
+    """是 YouTube 影片就回傳標準網址，否則回傳 None"""
+    try:
+        u = urlparse(url)
+    except ValueError:
+        return None
+    host = (u.hostname or "").lower().removeprefix("www.").removeprefix("m.")
+    vid = None
+    if host == "youtu.be":
+        vid = u.path.strip("/").split("/")[0]
+    elif host in ("youtube.com", "music.youtube.com"):
+        if u.path == "/watch":
+            vid = (parse_qs(u.query).get("v") or [None])[0]
+        elif u.path.startswith(("/shorts/", "/live/", "/embed/")):
+            vid = u.path.split("/")[2] if len(u.path.split("/")) > 2 else None
+    if vid and re.fullmatch(r"[\w-]{6,20}", vid):
+        return f"https://www.youtube.com/watch?v={vid}"
+    return None
+
+
+def youtube_title(url):
+    try:
+        r = requests.get("https://www.youtube.com/oembed", params={"url": url, "format": "json"}, timeout=6)
+        return r.json().get("title", "") if r.ok else ""
+    except Exception:  # noqa: BLE001
+        return ""
+
 
 def is_public_url(url):
     """避免伺服器被拿去讀取內部網路（SSRF）"""
@@ -197,6 +306,24 @@ def extract_url():
     data = request.get_json(silent=True) or {}
     url = str(data.get("text", "")).strip()
 
+    # YouTube：直接讓 Gemini 看影片
+    yt = youtube_url(url)
+    if yt:
+        title = youtube_title(yt)
+        prompt = f"""
+這是一支旅遊相關的 YouTube 影片{f"「{title}」" if title else ""}。
+請從影片的畫面、字幕和旁白中，找出所有介紹到、可以實際前往的景點、餐廳、咖啡廳或商店。
+{PLACES_FORMAT}
+"""
+        try:
+            places = clean_places(ask_json(prompt, video_url=yt))
+        except Exception as e:  # noqa: BLE001
+            msg = str(e)
+            if "INVALID_ARGUMENT" in msg or "not found" in msg.lower() or "private" in msg.lower():
+                return error("這支影片無法讀取，可能是私人或未公開影片", 400)
+            return ai_failed(e, "youtube")
+        return jsonify({"places": places, "title": title, "source": yt, "video": True})
+
     try:
         html = fetch_page(url)
     except Exception as e:  # noqa: BLE001
@@ -204,7 +331,7 @@ def extract_url():
         return jsonify({"places": [], "title": ""})
 
     soup = BeautifulSoup(html, "html.parser")
-    title = (soup.title.string or "").strip() if soup.title else ""
+    title = (soup.title.string or "").strip() if soup.title and soup.title.string else ""
 
     # 社群網站常常只有 meta 描述（例如影片說明文字）
     metas = []
@@ -224,8 +351,7 @@ def extract_url():
     try:
         return jsonify({"places": extract_places_from_text(text, title), "title": title})
     except Exception as e:  # noqa: BLE001
-        print("extract_url 錯誤:", e)
-        return error("AI 服務暫時無法使用，請稍後再試", 502)
+        return ai_failed(e, "extract_url")
 
 
 # ===============================
@@ -281,6 +407,126 @@ def enrich_locations():
             print("地點解析錯誤:", name, e)
 
     return jsonify(results)
+
+
+# ===============================
+# 雲端同步（Firestore）
+# 同步碼本身就是鑰匙：資料庫只存同步碼的雜湊值，不存同步碼本身
+# ===============================
+
+_db = None
+CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # 去掉容易看錯的 I O 0 1
+
+
+def firestore_db():
+    global _db
+    if _db is None:
+        from google.cloud import firestore
+        _db = firestore.Client()
+    return _db
+
+
+def normalize_code(code):
+    c = re.sub(r"[^A-Z0-9]", "", str(code or "").upper())
+    return c if len(c) == 12 and all(ch in CODE_ALPHABET for ch in c) else None
+
+
+def doc_ref(code):
+    key = hashlib.sha256(("etrip:" + code).encode()).hexdigest()
+    return firestore_db().collection(SYNC_COLLECTION).document(key)
+
+
+def pack(data):
+    blob = zlib.compress(json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode(), 9)
+    if len(blob) > MAX_SYNC_BYTES:
+        raise ValueError("資料太大，超過雲端同步的上限")
+    return blob
+
+
+def unpack(blob):
+    return json.loads(zlib.decompress(blob).decode())
+
+
+def sync_unavailable(e):
+    print("sync 錯誤:", repr(e))
+    return error("雲端同步暫時無法使用，請確認伺服器已開啟 Firestore", 503)
+
+
+@app.route("/sync", methods=["POST"])
+def sync_create():
+    data = (request.get_json(silent=True) or {}).get("data")
+    if not isinstance(data, dict):
+        return error("沒有收到資料")
+    try:
+        blob = pack(data)
+        from google.cloud import firestore
+        for _ in range(5):
+            code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(12))
+            ref = doc_ref(code)
+            if not ref.get().exists:
+                ref.set({"data": blob, "version": 1, "updatedAt": firestore.SERVER_TIMESTAMP})
+                pretty = f"{code[:4]}-{code[4:8]}-{code[8:]}"
+                return jsonify({"code": pretty, "version": 1})
+        return error("建立同步碼失敗，請再試一次", 500)
+    except ValueError as e:
+        return error(str(e), 413)
+    except Exception as e:  # noqa: BLE001
+        return sync_unavailable(e)
+
+
+@app.route("/sync/<code>", methods=["GET"])
+def sync_get(code):
+    c = normalize_code(code)
+    if not c:
+        return error("同步碼格式不正確", 400)
+    try:
+        snap = doc_ref(c).get()
+        if not snap.exists:
+            return error("找不到這個同步碼", 404)
+        d = snap.to_dict()
+        return jsonify({"version": d.get("version", 1), "data": unpack(d["data"])})
+    except Exception as e:  # noqa: BLE001
+        return sync_unavailable(e)
+
+
+@app.route("/sync/<code>", methods=["PUT"])
+def sync_put(code):
+    c = normalize_code(code)
+    if not c:
+        return error("同步碼格式不正確", 400)
+    body = request.get_json(silent=True) or {}
+    data, base = body.get("data"), body.get("baseVersion")
+    if not isinstance(data, dict) or not isinstance(base, int):
+        return error("資料格式不正確")
+    try:
+        blob = pack(data)
+        from google.cloud import firestore
+        db = firestore_db()
+        ref = doc_ref(c)
+
+        @firestore.transactional
+        def save(tx):
+            snap = ref.get(transaction=tx)
+            if not snap.exists:
+                return 404, None
+            d = snap.to_dict()
+            current = d.get("version", 1)
+            if current != base:
+                # 別台裝置先存了：把雲端的版本回傳，讓前端合併後再存
+                return 409, {"version": current, "data": unpack(d["data"])}
+            tx.update(ref, {"data": blob, "version": current + 1, "updatedAt": firestore.SERVER_TIMESTAMP})
+            return 200, {"version": current + 1}
+
+        status, payload = save(db.transaction())
+        if status == 404:
+            return error("找不到這個同步碼", 404)
+        if status == 409:
+            return jsonify({"conflict": True, **payload}), 409
+        return jsonify(payload)
+    except ValueError as e:
+        return error(str(e), 413)
+    except Exception as e:  # noqa: BLE001
+        return sync_unavailable(e)
 
 
 # ===============================

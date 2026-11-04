@@ -62,13 +62,21 @@ function demoDayTrip() {
   };
 }
 
+/** 新增範例行程（範例口袋名單會標記起來，刪除範例行程時一起移除） */
+function addDemoTrip(kind) {
+  const raw = kind === "day" ? demoDayTrip() : demoTrip();
+  const names = new Set(library.backups.map(b => b.name.toLowerCase()));
+  for (const b of raw.backups) {
+    if (!names.has(b.name.toLowerCase())) library.backups.push(normalizeBackup({ ...b, demo: true }));
+  }
+  return createTrip({ ...raw, meta: { ...raw.meta, demo: true } });
+}
+
 function loadDemo(kind) {
-  replaceTrip(kind === "day" ? demoDayTrip() : demoTrip());
-  prefs.expanded = {};
-  savePrefs();
+  const t = addDemoTrip(kind);
   todaySel = null;
   setView("today");
-  toast("已載入範例行程，可以隨意點點看", { action: { label: "復原", fn: () => { restorePrevTrip(); refresh(); } } });
+  toast("已加入範例行程，可以隨意點點看", { action: { label: "移除", fn: () => { deleteTrip(t.id); refresh(); } } });
 }
 
 ACTIONS["load-demo"] = el => loadDemo(el.dataset.kind);
@@ -80,7 +88,7 @@ ACTIONS["demo-pick"] = () => {
       <button type="submit" name="_action" value="day" class="list-btn">${icon("sun")}<span><b>一日遊：九份金瓜石</b><small>今天出發，體驗回程倒數與空檔提示</small></span></button>
       <button type="submit" name="_action" value="multi" class="list-btn">${icon("calendar")}<span><b>多日旅行：台南 3 天 2 夜</b><small>今天是第 2 天，體驗切換天數與住宿資訊</small></span></button>
     </div>
-    ${tripData.days.length ? `<p class="field-hint">目前的行程會被取代，可以在「工具 → 復原上一版行程」找回。</p>` : ""}`,
+    <p class="field-hint">會新增成一個行程，不影響你原本的資料；不要了可以在行程設定刪除。</p>`,
     actions: [{ label: "取消", value: "cancel", variant: "ghost" }],
     onAction(v) { if (v === "day" || v === "multi") loadDemo(v); }
   });

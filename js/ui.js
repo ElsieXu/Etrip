@@ -5,6 +5,7 @@
 // ===== 圖示（線條風格 SVG） =====
 const ICONS = {
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
+  refresh: '<path d="M21 12a9 9 0 0 1-15.36 6.36L3 16"/><path d="M3 21v-5h5"/><path d="M3 12a9 9 0 0 1 15.36-6.36L21 8"/><path d="M21 3v5h-5"/>',
   clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
   calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
   bookmark: '<path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
@@ -49,6 +50,8 @@ function icon(name, cls = "") {
 // ===== 提示訊息（toast），可附「復原」按鈕 =====
 function toast(message, { action, duration = 3200 } = {}) {
   const box = $("#toasts");
+  // 一次只顯示一則，避免舊訊息的「復原」被誤按
+  box.replaceChildren();
   const el = document.createElement("div");
   el.className = "toast";
   el.setAttribute("role", "status");
@@ -177,19 +180,21 @@ function setBusy(btn, busy, text) {
 // ===== 共用元件 =====
 
 function emptyStateHTML() {
+  const others = library.trips.filter(t => t !== tripData).length;
   return `
   <div class="empty-state">
     <div class="empty-art">${icon("plane")}</div>
-    <h2>開始規劃你的旅程</h2>
+    <h2>${others ? "建立新的行程" : "開始規劃你的旅程"}</h2>
     <p>把機票、訂房信、或隨手記的行程貼上來，AI 會幫你整理成每天的行程。也可以先收藏想去的地方，之後再排。</p>
     <div class="empty-actions">
       <button class="btn primary" data-action="go" data-view="tools" data-focus="#rawInput">${icon("sparkles")}貼上行程讓 AI 整理</button>
       <button class="btn" data-action="daytrip-new">${icon("sun")}建立一日遊</button>
-      <button class="btn" data-action="day-add">${icon("calendar")}手動建立多日行程</button>
+      <button class="btn" data-action="trip-new-blank">${icon("calendar")}手動建立多日行程</button>
+      ${others ? `<button class="btn ghost" data-action="trip-list">${icon("calendar")}切換到其他行程（${others} 個）</button>` : ""}
       <button class="btn ghost" data-action="go" data-view="pocket">${icon("bookmark")}先收藏口袋名單</button>
-      <button class="btn ghost" data-action="demo-pick">${icon("sparkles")}先看看範例行程</button>
+      ${others ? "" : `<button class="btn ghost" data-action="demo-pick">${icon("sparkles")}先看看範例行程</button>`}
     </div>
-    <p class="empty-foot">電腦上已經整理好了？在電腦上點「工具 → 同步到手機」，用手機掃 QR Code 就能帶走。</p>
+    <p class="empty-foot">電腦上已經整理好了？到「工具 → 雲端同步」輸入同一組同步碼，就能帶著走。</p>
   </div>`;
 }
 
@@ -315,29 +320,3 @@ ACTIONS["copy"] = async el => {
   const ok = await copyText(el.dataset.text || "");
   toast(ok ? "已複製" : "複製失敗");
 };
-
-// ===== 行程設定（名稱、目的地、出發日） =====
-
-function openTripSettings() {
-  const m = tripData.meta;
-  openSheet({
-    title: "行程設定",
-    body: `
-      ${field({ name: "title", label: "行程名稱", value: m.title, placeholder: "例：沖繩 5 天 4 夜", autofocus: true })}
-      ${field({ name: "region", label: "目的地（城市 / 地區）", value: m.region, placeholder: "例：沖繩、台南", hint: "用來提高地點定位的準確度" })}
-      ${field({ name: "startDate", label: "出發日（Day 1）", value: m.startDate, type: "date", hint: "之後每一天的日期會自動往後推算" })}`,
-    actions: [{ label: "取消", value: "cancel", variant: "ghost" }, { label: "儲存", value: "save", variant: "primary" }],
-    onAction(v, d) {
-      if (v !== "save") return;
-      const newStart = isISODate(d.startDate) ? d.startDate : "";
-      if (newStart !== m.startDate) tripData.days.forEach(day => { day.date = ""; });
-      m.title = str(d.title);
-      m.region = str(d.region);
-      m.startDate = newStart;
-      saveTrip();
-      refresh();
-      toast("已更新行程設定");
-    }
-  });
-}
-ACTIONS["trip-settings"] = () => openTripSettings();
