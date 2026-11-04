@@ -21,7 +21,7 @@
 2. 上方選好你的專案
 3. 按右上角的 **「啟用 Cloud Shell」** 圖示（`>_`），下方會出現一個終端機視窗
 
-以下每一段指令，都是複製貼到 Cloud Shell 後按 Enter。
+以下每一段指令，都是複製貼到 Cloud Shell 後按 Enter。**一次只貼一段**，等它跑完再貼下一段。
 
 ## 3. 設定專案並開啟需要的服務
 
@@ -47,13 +47,27 @@ gcloud firestore databases create --location=asia-east1
 
 ## 5. 讓 Cloud Run 可以讀寫 Firestore
 
+> 一次只貼一段，按 Enter 等它跑完再貼下一段。如果畫面出現 `>` 一直等你輸入，代表貼上時被截斷了：按 `Ctrl + C` 取消，再重貼那一段。
+
 ```bash
 PROJECT_ID=$(gcloud config get-value project)
-PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
-  --role="roles/datastore.user"
 ```
+
+```bash
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
+```
+
+確認兩個值都有抓到（應該會顯示專案 ID 和一串數字）：
+
+```bash
+echo $PROJECT_ID $PROJECT_NUMBER
+```
+
+```bash
+gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" --role="roles/datastore.user"
+```
+
+成功會顯示 `Updated IAM policy for project`。如果問要不要設定條件（condition），選 **None**。
 
 ## 6. 下載程式碼
 
