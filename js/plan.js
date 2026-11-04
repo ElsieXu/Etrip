@@ -17,11 +17,14 @@ function renderPlan() {
     return;
   }
   const allOpen = tripData.days.every((d, i) => isExpanded(d, i));
+  // 出發前行李清單放上面；旅途中、結束後以行程為主，花費和行李放下面
+  const packingFirst = ["before", "undated", "empty"].includes(tripPhase());
   el.innerHTML = `
   <div class="plan-layout">
     <div class="plan-main">
       ${tripPhase() === "after" ? reviewCardHTML() : ""}
       ${infoCardHTML()}
+      ${packingFirst ? packingCardHTML() : ""}
       <div class="section-head">
         <h2>${isDayTrip() ? "行程" : "每日行程"}</h2>
         ${isDayTrip() ? "" : `<button class="btn sm ghost" data-action="days-expand-all" data-open="${allOpen ? 0 : 1}">${allOpen ? "全部收合" : "全部展開"}</button>`}
@@ -31,6 +34,8 @@ function renderPlan() {
         ? `<button class="add-day subtle" data-action="day-add">${icon("plus")}行程變長了？改成多日行程（新增第 2 天）</button>`
         : `<button class="add-day" data-action="day-add">${icon("plus")}新增一天</button>`}
       <p class="hint-line">小技巧：按住 ${icon("grip")} 可以拖曳排序${isDayTrip() ? "" : "，也能拖到其他天"}。</p>
+      ${expensesCardHTML()}
+      ${!packingFirst && tripPhase() !== "after" ? packingCardHTML() : ""}
     </div>
     ${pocketAsideHTML()}
   </div>`;
@@ -44,13 +49,14 @@ function dayCardHTML(day, i) {
   const isToday = i === todayIndex();
   const done = day.items.filter(x => x.done).length;
   const single = isDayTrip();
+  const wx = dayWeather(tripData, i);
   const d = parseISODate(date);
   const badge = single && d ? `<span class="day-badge date"><small>${d.getMonth() + 1}月</small>${d.getDate()}</span>` : `<span class="day-badge">D${i + 1}</span>`;
   const head = `
         ${badge}
         <span class="day-title-wrap">
           <span class="day-title">${esc(day.title)}${isToday ? '<span class="pill accent">今天</span>' : ""}</span>
-          <span class="day-sub">${date ? formatDateLabel(date) + " · " : ""}<span class="nowrap">${day.items.length} 個行程</span>${done ? `<span class="nowrap">・完成 ${done}</span>` : ""}</span>
+          <span class="day-sub">${date ? formatDateLabel(date) + " · " : ""}<span class="nowrap">${day.items.length} 個行程</span>${done ? `<span class="nowrap">・完成 ${done}</span>` : ""}${wx ? `<span class="nowrap day-wx">　${weatherShort(wx)}</span>` : ""}</span>
         </span>`;
   return `
   <article class="card day-card ${isToday ? "is-today" : ""}" data-day="${i}">
@@ -130,6 +136,10 @@ function openItemSheet(dayIndex, item) {
       ${field({ name: "text", label: "地點或活動", value: it.text, required: true, autofocus: true, placeholder: "例：首里城、國際通晚餐", hint: "寫店名或景點名稱，導航會比較準" })}
       ${field({ name: "note", label: "備註", value: it.note, type: "textarea", placeholder: "要點的菜、營業時間、注意事項…" })}
       ${isNew ? "" : toggleField({ name: "done", label: "已完成", checked: it.done })}
+      ${isNew ? "" : (() => {
+        const spent = tripData.expenses.filter(e => e.place && e.place === it.text);
+        return `<button type="submit" name="_action" value="expense" class="list-btn" formnovalidate>${icon("wallet")}<span><b>記一筆這裡的花費</b><small>${spent.length ? `已記 ${spent.length} 筆，共 ${fmtMoney(sumExpenses(spent).total, "TWD")}` : "例如門票、餐點"}</small></span></button>`;
+      })()}
       ${isNew ? "" : `
       <details class="review-fields" ${it.rating || it.review || it.done || tripPhase() === "after" ? "open" : ""}>
         <summary>去過之後：評分與心得</summary>
@@ -146,6 +156,10 @@ function openItemSheet(dayIndex, item) {
     ],
     onAction(v, d) {
       if (v === "delete") return deleteItem(dayIndex, it.id);
+      if (v === "expense") {
+        setTimeout(() => openExpenseSheet({ dayIndex, place: it.text }), 50);
+        return;
+      }
       if (v !== "save") return;
       const text = str(d.text);
       if (!text) return false;

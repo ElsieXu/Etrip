@@ -43,6 +43,7 @@ function libraryFingerprint(lib) {
   lib.trips.forEach(t => parts.push(`t:${t.id}:${t.meta.updatedAt || 0}`));
   lib.backups.forEach(b => parts.push(`b:${b.id}:${b.updatedAt || 0}`));
   Object.keys(lib.deleted || {}).forEach(id => parts.push(`d:${id}`));
+  Object.entries(lib.templates || {}).forEach(([k, v]) => parts.push(`p:${k}:${v.updatedAt || 0}`));
   return parts.sort().join("|");
 }
 

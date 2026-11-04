@@ -273,11 +273,14 @@ function compactForShare(t, level = 0) {
     info: clean(t.info),
     days: t.days.map(d => clean({
       title: d.title, date: d.date,
+      id: d.id,
       items: d.items.map(it => clean({
         time: it.time, text: it.text, note: it.note, done: it.done, rating: it.rating, review: it.review,
         lat: r5(it.lat), lng: r5(it.lng), placeId: pid(it.placeId)
       }))
     })),
+    expenses: (t.expenses || []).map(e => clean({ ...e, id: "", createdAt: 0 })),
+    packing: (t.packing || []).map(p => clean({ text: p.text, done: p.done })),
     backups: library.backups.map(b => clean({
       id: b.id, name: b.name, category: b.category === "other" ? "" : b.category, area: b.area, note: b.note, source: b.source,
       priority: b.priority === "must" ? "must" : "", rainy: b.rainy, status: b.status === "todo" ? "" : b.status,
@@ -522,6 +525,15 @@ function buildTripText() {
   if (codes) s += `■ 訂位 / 票券\n${codes}\n\n`;
   if (emergency) s += `■ 緊急聯絡\n${emergency}\n\n`;
   if (notes) s += `■ 備忘\n${notes}\n\n`;
+  if (t.expenses && t.expenses.length) {
+    const sum = sumExpenses(t.expenses);
+    s += `■ 花費：${sum.approx ? "約 " : ""}${fmtMoney(sum.total, "TWD")}（${t.expenses.length} 筆）\n`;
+    for (const [m, info] of Object.entries(PAY_METHODS)) {
+      const items = t.expenses.filter(e => e.method === m);
+      if (items.length) s += `・${info.label}：${fmtCurrencySums(sumByCurrency(items))}\n`;
+    }
+    s += "\n";
+  }
   if (t.backups.length) {
     s += `■ 口袋名單\n`;
     t.backups.forEach(b => {

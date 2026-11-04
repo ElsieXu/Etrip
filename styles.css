@@ -845,3 +845,87 @@ input[type=checkbox] { width: 20px; height: 20px; min-height: 0; accent-color: v
 .swatch.active .swatch-dot .i { opacity: 1; }
 
 .nowrap { white-space: nowrap; }
+
+/* ===== 天氣 ===== */
+.weather-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px; margin-bottom: 12px; border-radius: 14px;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.weather-row.muted { font-size: 13px; color: var(--muted); background: transparent; border-style: dashed; }
+.weather-row.muted .i { color: var(--muted); margin-right: 6px; }
+.weather-row.rainy { border-color: color-mix(in srgb, var(--primary) 40%, var(--border)); background: var(--primary-soft); }
+.wx-icon { font-size: 30px; line-height: 1; }
+.wx-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.wx-main b { font-size: 16px; }
+.wx-main small { color: var(--muted); font-size: 12px; }
+.day-wx { color: var(--text-2); }
+
+/* ===== 匯率 ===== */
+.fx-rate { font-size: 15px; margin-bottom: 10px; }
+.fx-rate b { font-size: 18px; }
+.fx-row { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: end; }
+.fx-field span { display: block; font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
+.fx-eq { padding-bottom: 12px; font-weight: 800; color: var(--muted); }
+.fx-card .field-hint a { color: var(--muted); }
+
+/* ===== 單選小方塊（分類、付款方式） ===== */
+.field-label + .radio-chips { margin-bottom: 12px; }
+.radio-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.rchip input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.rchip span {
+  display: inline-flex; align-items: center; min-height: 38px; padding: 0 12px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--surface); font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.rchip input:checked + span { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-soft-ink); }
+.rchip input:focus-visible + span { outline: 2px solid var(--primary); outline-offset: 2px; }
+.amount-row #f_amount { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+/* ===== 花費 ===== */
+.exp-total { display: flex; flex-direction: column; gap: 2px; margin-bottom: 12px; }
+.exp-total b { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
+.exp-card.compact .exp-total { flex-direction: row; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.exp-card.compact .exp-total b { font-size: 22px; }
+.exp-methods { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.exp-method { display: flex; justify-content: space-between; gap: 10px; padding: 8px 12px; border-radius: 10px; background: var(--surface-2); font-size: 14px; }
+.exp-method b { font-variant-numeric: tabular-nums; text-align: right; }
+.exp-cats { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.exp-cat { display: grid; grid-template-columns: 84px 1fr auto; align-items: center; gap: 10px; font-size: 13px; }
+.exp-cat b { font-variant-numeric: tabular-nums; font-size: 13px; }
+.exp-cat .bar { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.exp-cat .bar i { display: block; height: 100%; border-radius: 4px; background: var(--primary); }
+.exp-day { margin: 10px 2px 4px; font-size: 12px; color: var(--muted); font-weight: 700; }
+.exp-list { display: flex; flex-direction: column; gap: 4px; }
+.exp-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 10px;
+  background: var(--surface-2); color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.exp-icon { font-size: 18px; width: 28px; text-align: center; }
+.exp-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.exp-main b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.exp-main small { font-size: 12px; color: var(--muted); }
+.exp-amt { display: flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; }
+.exp-amt b { font-size: 14px; }
+.exp-amt small { font-size: 12px; color: var(--muted); }
+
+/* ===== 行李清單 ===== */
+.pack-card summary h2 { flex-shrink: 0; }
+.pack-card summary h2 .muted { margin-left: 4px; font-weight: 600; }
+.pack-progress { flex: 1; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; margin: 0 8px; }
+.pack-progress i { display: block; height: 100%; background: var(--success); border-radius: 3px; }
+.pack-list { display: grid; grid-template-columns: 1fr; gap: 4px; margin-bottom: 10px; }
+@media (min-width: 640px) { .pack-list { grid-template-columns: 1fr 1fr; } }
+.pack-row { display: flex; align-items: center; gap: 2px; border-radius: 10px; background: var(--surface-2); }
+.pack-check {
+  flex: 1; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 10px;
+  border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.pack-check .i { width: 22px; height: 22px; padding: 3px; border-radius: 6px; border: 2px solid var(--border); color: transparent; background: var(--surface); }
+.pack-row.done .pack-check .i { background: var(--success); border-color: var(--success); color: #fff; }
+.pack-row.done .pack-check span { text-decoration: line-through; color: var(--muted); }
+.icon-btn.sm { width: 34px; height: 34px; }
+.icon-btn.sm .i { width: 16px; height: 16px; }
+.pack-card .quick-add { margin-bottom: 4px; }
+
+/* 地區分組 */
+.area-row .i { width: 14px; height: 14px; }
