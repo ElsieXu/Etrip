@@ -2,6 +2,14 @@
 
 行前在電腦上做功課、旅途中用手機隨心所欲。國內、國外旅遊都適用。
 
+## 畫面
+
+| 今天 | 行程 | 口袋 |
+|---|---|---|
+| ![今天](docs/screenshots/phone-today.png) | ![行程](docs/screenshots/phone-plan.png) | ![口袋](docs/screenshots/phone-pocket.png) |
+
+電腦版：![電腦版行程](docs/screenshots/desktop-plan.png)
+
 ## 四個分頁
 
 | 分頁 | 用途 |
