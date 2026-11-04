@@ -1,6 +1,10 @@
 flask
 flask-cors
-openai
 python-dotenv
 requests
 beautifulsoup4
+google-genai
+google-cloud-firestore
+gunicorn
+# 選用：AI_PROVIDER=openai 時才需要
+openai
