@@ -131,6 +131,13 @@ function renderToday() {
     </div>
   </div>
   <button class="fab" data-action="exp-add" data-day="${i}" aria-label="記一筆花費">${icon("plus")}記帳</button>`;
+
+  // 「下一站」的導航 / 完成按鈕還在畫面上時，先把記帳按鈕藏起來，避免擋到
+  const fab = el.querySelector(".fab"), actions = el.querySelector(".next-actions");
+  if (fab && actions && "IntersectionObserver" in window) {
+    fab.classList.add("fab-hidden");
+    new IntersectionObserver(([e]) => fab.classList.toggle("fab-hidden", e.isIntersecting)).observe(actions);
+  }
 }
 
 /** 附近的口袋名單：有定位就用目前位置，沒有就用下一站 / 當天最後一站 */
