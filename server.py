@@ -54,6 +54,7 @@ load_dotenv()
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
+app.json.ensure_ascii = False   # 中文直接顯示，瀏覽器打開網址時看得懂
 
 _origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 CORS(app, resources={r"/*": {"origins": _origins or "*"}})
@@ -64,6 +65,9 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 GEMINI_VIDEO_MODEL = os.getenv("GEMINI_VIDEO_MODEL", GEMINI_MODEL)
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 SYNC_COLLECTION = os.getenv("SYNC_COLLECTION", "etrip_sync")
+
+# 後端版本：每次修改 server.py 時更新，部署後打開 /health 就能確認是不是新版
+APP_VERSION = "2026-11-05"
 
 MAX_TEXT = 15000        # 送給 AI 的文字上限
 MAX_PLACES = 80         # 一次最多補幾個座標
@@ -341,9 +345,16 @@ def ai_failed(e, where):
     return error("AI 服務暫時無法使用，請稍後再試", 502)
 
 
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({"ok": True, "message": "Etrip 後端運作中。檢查狀態請打開 /health", "version": APP_VERSION})
+
+
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"ok": True, "ai": AI_PROVIDER, "sync": True})
+    # K_REVISION 是 Cloud Run 自動提供的部署編號，每部署一次就會變
+    return jsonify({"ok": True, "ai": AI_PROVIDER, "sync": True, "version": APP_VERSION,
+                    "revision": os.getenv("K_REVISION", "")})
 
 
 # ===============================
