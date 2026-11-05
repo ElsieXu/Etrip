@@ -25,6 +25,7 @@ function renderPlan() {
       ${tripPhase() === "after" ? reviewCardHTML() : ""}
       ${infoCardHTML()}
       ${packingFirst ? packingCardHTML() : ""}
+      ${tipHTML("plan")}
       <div class="section-head">
         <h2>${isDayTrip() ? "行程" : "每日行程"}</h2>
         ${isDayTrip() ? "" : `<button class="btn sm ghost" data-action="days-expand-all" data-open="${allOpen ? 0 : 1}">${allOpen ? "全部收合" : "全部展開"}</button>`}

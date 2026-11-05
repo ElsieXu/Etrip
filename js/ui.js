@@ -12,6 +12,8 @@ const ICONS = {
   wallet: '<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>',
   suitcase: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M8 11v5M16 11v5"/>',
   umbrella: '<path d="M22 12a10 10 0 0 0-20 0z"/><path d="M12 12v7a2 2 0 0 0 4 0"/><path d="M12 2v1"/>',
+  list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
   clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
   calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
   bookmark: '<path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
@@ -187,6 +189,7 @@ function setBusy(btn, busy, text) {
 
 function emptyStateHTML() {
   const others = library.trips.filter(t => t !== tripData).length;
+  if (!others && !library.backups.length && !prefs.welcomeSeen && !DEMO) return welcomeHTML();
   return `
   <div class="empty-state">
     <div class="empty-art">${icon("plane")}</div>
@@ -198,7 +201,7 @@ function emptyStateHTML() {
       <button class="btn" data-action="trip-new-blank">${icon("calendar")}手動建立多日行程</button>
       ${others ? `<button class="btn ghost" data-action="trip-list">${icon("calendar")}切換到其他行程（${others} 個）</button>` : ""}
       <button class="btn ghost" data-action="go" data-view="pocket">${icon("bookmark")}先收藏口袋名單</button>
-      ${others ? "" : `<button class="btn ghost" data-action="demo-pick">${icon("sparkles")}先看看範例行程</button>`}
+      ${others ? "" : `<button class="btn ghost" data-action="demo-enter">${icon("sparkles")}先看看範例（示範模式）</button>`}
     </div>
     <p class="empty-foot">電腦上已經整理好了？到「工具 → 雲端同步」輸入同一組同步碼，就能帶著走。</p>
   </div>`;

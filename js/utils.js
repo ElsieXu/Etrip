@@ -172,6 +172,23 @@ function mapsNavUrl(p) {
   return url;
 }
 
+/**
+ * 從地址取出地區（城市），讓快速收藏的地點也能依地區分組。
+ * 「224新北市瑞芳區…」→「新北」；「日本〒900-0015 沖繩縣那霸市…」→「那霸」
+ */
+function areaFromAddress(addr) {
+  const s = str(addr).replace(/〒?\d{3}-?\d{0,4}/g, "");
+  const tw = s.match(/([\u4e00-\u9fff]{2})[市縣]/);
+  if (/台灣|臺灣/.test(s) || (tw && /^(台北|臺北|新北|基隆|桃園|新竹|苗栗|台中|臺中|彰化|南投|雲林|嘉義|台南|臺南|高雄|屏東|宜蘭|花蓮|台東|臺東|澎湖|金門|連江)$/.test(tw[1]))) {
+    return tw ? tw[1].replace("臺", "台") : "";
+  }
+  const jp = s.match(/(?:東京都|北海道|大阪府|京都府|[\u4e00-\u9fff]{2,3}[縣県])\s*(?:[\u4e00-\u9fff]{1,3}郡)?([\u4e00-\u9fff]{1,4}?)[市区區町村]/);
+  if (jp) return jp[1];
+  const kr = s.match(/(首爾|釜山|濟州|仁川|大邱|光州|大田|慶州|江陵)/);
+  if (kr) return kr[1];
+  return "";
+}
+
 /** 解析 AI 回傳的 JSON（可能是字串、包了 ```json 的字串、或已經是物件） */
 function parseAIJson(x) {
   if (x && typeof x === "object") return x;

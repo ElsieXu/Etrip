@@ -63,22 +63,14 @@ function areaChipsHTML(active, action) {
 function renderPocket() {
   wakeServer();
   const p = prefs.pocket;
-  const cats = [["all", "全部"], ...Object.entries(CATEGORIES).map(([k, v]) => [k, `${v.icon} ${v.label}`])];
-  const counts = { all: tripData.backups.length };
-  tripData.backups.forEach(b => { counts[b.category] = (counts[b.category] || 0) + 1; });
-
   $("#view-pocket").innerHTML = `
-  <div class="pocket-top">
-    <section class="card">
-      <form class="quick-add" data-form="backup-quick">
-        <input id="quickAdd" name="name" placeholder="收藏一個地方：店名、景點…" autocomplete="off" aria-label="新增口袋名單">
-        <button class="btn primary" type="submit">${icon("plus")}收藏</button>
-      </form>
-      <p class="muted small">想多記一點（分類、必去、來源影片）？收藏後點卡片右上角的 ⋯ 編輯。</p>
-    </section>
-
-    <details class="card radar" ${tripData.backups.length ? "" : "open"}>
-      <summary><h2>${icon("radar")}景點雷達：從文章或影片抓地點</h2>${icon("chevron", "chev")}</summary>
+  <section class="card pocket-add">
+    <form class="quick-add" data-form="backup-quick">
+      <input id="quickAdd" name="name" placeholder="收藏一個地方：店名、景點…" autocomplete="off" aria-label="新增口袋名單">
+      <button class="btn primary" type="submit">${icon("plus")}收藏</button>
+    </form>
+    <details class="radar radar-inline" ${tripData.backups.length ? "" : "open"}>
+      <summary>${icon("radar")}<span>從 YouTube 影片或文章抓地點</span>${icon("chevron", "chev")}</summary>
       <div class="radar-body">
         <textarea id="radarText" rows="4" placeholder="貼上 YouTube 影片網址、部落格網址，或影片說明文字、筆記、清單…"></textarea>
         <input id="radarSource" placeholder="來源連結（選填）：IG / TikTok 網址">
@@ -86,40 +78,28 @@ function renderPocket() {
         <button class="btn primary block" data-action="radar-run">${icon("sparkles")}抓取地點</button>
       </div>
     </details>
-  </div>
+  </section>
 
+  ${tipHTML("pocket")}
+
+  ${tripData.backups.length ? `
   <div class="filter-bar">
-    <label class="search">${icon("search")}<input id="pocketSearch" type="search" placeholder="搜尋名稱、地區、備註" value="${esc(pocketQuery)}"></label>
+    <div class="filter-top">
+      <label class="search">${icon("search")}<input id="pocketSearch" type="search" placeholder="搜尋名稱、地區、備註" value="${esc(pocketQuery)}"></label>
+      <button class="icon-btn filter-btn ${activeFilterCount() ? "active" : ""}" data-action="pocket-filters" aria-label="篩選與排序">
+        ${icon("sliders")}${activeFilterCount() ? `<span class="badge">${activeFilterCount()}</span>` : ""}
+      </button>
+      <button class="icon-btn" data-action="pocket-layout" aria-label="${p.layout === "card" ? "改成清單" : "改成卡片"}" title="${p.layout === "card" ? "改成清單" : "改成卡片"}">${icon(p.layout === "card" ? "list" : "grid")}</button>
+    </div>
     ${areaChipsHTML(p.area, "pocket-area")}
-    <div class="chip-row scroll">
-      ${cats.map(([k, label]) => `<button class="chip ${p.cat === k ? "active" : ""}" data-action="pocket-cat" data-v="${k}">${label}<small>${counts[k] || 0}</small></button>`).join("")}
-    </div>
-    <div class="chip-row">
-      <button class="chip ${p.must ? "active" : ""}" data-action="pocket-flag" data-k="must">⭐ 必去</button>
-      <button class="chip ${p.rainy ? "active" : ""}" data-action="pocket-flag" data-k="rainy">🌧 雨天備案</button>
-      <button class="chip ${p.hideVisited ? "active" : ""}" data-action="pocket-flag" data-k="hideVisited">隱藏去過的</button>
-      <label class="sort-select">排序
-        <select id="pocketSort">
-          ${[["new", "最新收藏"], ["must", "必去優先"], ["near", "離我最近"], ["area", "依地區"]].map(([v, l]) =>
-            `<option value="${v}" ${p.sort === v ? "selected" : ""}>${l}</option>`).join("")}
-        </select>
-      </label>
-    </div>
-  </div>
+    ${activeFilterChipsHTML()}
+  </div>` : ""}
 
-  <div id="pocketList" class="poi-grid"></div>`;
+  <div id="pocketList" class="${p.layout === "card" ? "poi-grid" : "poi-list"}"></div>`;
 
   renderPocketList();
 
-  $("#pocketSearch").addEventListener("input", debounce(e => { pocketQuery = e.target.value; renderPocketList(); }, 150));
-  $("#pocketSort").addEventListener("change", async e => {
-    prefs.pocket.sort = e.target.value;
-    savePrefs();
-    if (e.target.value === "near" && !cachedPosition()) {
-      try { await getMyPosition(); } catch (err) { toast(err.message); }
-    }
-    renderPocketList();
-  });
+  $("#pocketSearch")?.addEventListener("input", debounce(e => { pocketQuery = e.target.value; renderPocketList(); }, 150));
 }
 
 function renderPocketList() {
@@ -141,7 +121,7 @@ function renderPocketList() {
       lastArea = b.area;
       header = `<h3 class="group-head">${esc(b.area || "未分地區")}</h3>`;
     }
-    return header + poiCardHTML(b, d);
+    return header + (prefs.pocket.layout === "card" ? poiCardHTML(b, d) : poiRowHTML(b, d));
   }).join("");
 }
 
@@ -172,7 +152,7 @@ function poiCardHTML(b, d) {
       <a class="btn sm" href="${esc(mapsSearchUrl(b))}" target="_blank" rel="noopener">${icon("pin")}地圖</a>
       <a class="btn sm" href="${esc(mapsNavUrl(b))}" target="_blank" rel="noopener">${icon("nav")}導航</a>
       <button class="btn sm primary-soft" data-action="backup-schedule" data-id="${b.id}">${icon("calendar")}排入行程</button>
-      ${b.status === "todo" ? `<button class="btn sm ghost" data-action="backup-visited" data-id="${b.id}">${icon("check")}去過</button>` : ""}
+      <button class="btn sm ghost" data-action="backup-checkin" data-id="${b.id}">${icon("check")}打卡</button>
     </div>
   </article>`;
 }
@@ -432,3 +412,207 @@ function visitTagHTML(b) {
   const title = last.trip.meta.title || "行程";
   return `<span class="tag success" title="${esc(last.review || "")}">✓ 去過 ${visits.length} 次 · ${esc([when, title].filter(Boolean).join(" "))}${last.rating ? ` ⭐${last.rating}` : ""}</span>`;
 }
+
+// ===== 清單模式（手機上一個畫面可以看 8～10 個） =====
+
+function poiRowHTML(b, d) {
+  const cat = CATEGORIES[b.category];
+  const visits = visitsOf(b);
+  const sched = scheduledDays(b);
+  const bits = [
+    d != null ? formatKm(d) + walkText(d) : "",
+    b.area,
+    visits.length ? `去過 ${visits.length} 次${visits[0].rating ? ` ⭐${visits[0].rating}` : ""}` : b.status === "visited" ? "去過" : "",
+    sched.length ? `已排 ${sched.map(i => "D" + (i + 1)).join("、")}` : "",
+    b.rainy ? "🌧" : "",
+    b.source ? "🔗" : ""
+  ].filter(Boolean);
+  return `
+  <div class="poi-row ${b.status !== "todo" || visits.length ? "dim" : ""}">
+    <span class="poi-icon sm">${cat.icon}</span>
+    <button class="poi-row-main" data-action="backup-menu" data-id="${b.id}">
+      <b>${esc(b.name)}${b.priority === "must" ? `<span class="must" title="必去">${icon("star")}</span>` : ""}</b>
+      <small>${bits.map(esc).join(" · ") || esc(cat.label)}</small>
+    </button>
+    <a class="icon-btn" href="${esc(mapsNavUrl(b))}" target="_blank" rel="noopener" aria-label="導航到 ${esc(b.name)}">${icon("nav")}</a>
+    <button class="icon-btn" data-action="backup-menu" data-id="${b.id}" aria-label="${esc(b.name)} 的選項">${icon("more")}</button>
+  </div>`;
+}
+
+/** 步行時間粗估（時速約 4.5 公里，2 公里內才顯示） */
+function walkText(km) {
+  if (km == null || km > 2) return "";
+  return `（步行約 ${Math.max(1, Math.round(km / 4.5 * 60))} 分）`;
+}
+
+ACTIONS["backup-menu"] = el => {
+  const b = findBackup(el.dataset.id);
+  if (!b) return;
+  const cat = CATEGORIES[b.category];
+  openSheet({
+    title: `${cat.icon} ${b.name}`,
+    body: `
+      ${b.note ? `<p class="poi-note">${esc(b.note)}</p>` : ""}
+      <div class="poi-tags">
+        ${visitTagHTML(b)}
+        ${b.area ? `<span class="tag">${esc(b.area)}</span>` : ""}
+        ${b.rainy ? `<span class="tag">🌧 雨天OK</span>` : ""}
+      </div>
+      <div class="sheet-list">
+        <a class="list-btn" href="${esc(mapsNavUrl(b))}" target="_blank" rel="noopener">${icon("nav")}<span><b>導航過去</b></span></a>
+        <a class="list-btn" href="${esc(mapsSearchUrl(b))}" target="_blank" rel="noopener">${icon("pin")}<span><b>在地圖上看</b><small>營業時間、評論、照片</small></span></a>
+        ${b.source ? `<a class="list-btn" href="${esc(b.source)}" target="_blank" rel="noopener">${icon("link")}<span><b>打開來源影片 / 文章</b></span></a>` : ""}
+        <button type="submit" name="_action" value="checkin" class="list-btn">${icon("check")}<span><b>打卡：我去過了</b><small>記進今天的行程，順便打分數</small></span></button>
+        <button type="submit" name="_action" value="schedule" class="list-btn">${icon("calendar")}<span><b>排入行程</b></span></button>
+        <button type="submit" name="_action" value="edit" class="list-btn">${icon("edit")}<span><b>編輯</b><small>分類、地區、必去、筆記…</small></span></button>
+      </div>`,
+    actions: [{ label: "關閉", value: "cancel", variant: "ghost" }],
+    onAction(v) {
+      const fake = { dataset: { id: b.id } };
+      if (v === "checkin") setTimeout(() => ACTIONS["backup-checkin"](fake), 50);
+      if (v === "schedule") setTimeout(() => ACTIONS["backup-schedule"](fake), 50);
+      if (v === "edit") setTimeout(() => openBackupSheet(b), 50);
+    }
+  });
+};
+
+ACTIONS["pocket-layout"] = () => {
+  prefs.pocket.layout = prefs.pocket.layout === "card" ? "list" : "card";
+  savePrefs();
+  renderPocket();
+};
+
+// ===== 篩選面板（分類、必去、雨天、去過、排序） =====
+
+function activeFilterCount() {
+  const p = prefs.pocket;
+  return (p.cat !== "all") + !!p.must + !!p.rainy + !!p.hideVisited + (p.sort !== "new");
+}
+
+const SORTS = { new: "最新收藏", must: "必去優先", near: "離我最近", area: "依地區" };
+
+function activeFilterChipsHTML() {
+  const p = prefs.pocket;
+  const chips = [];
+  if (p.cat !== "all") chips.push(["cat", `${CATEGORIES[p.cat].icon} ${CATEGORIES[p.cat].label}`]);
+  if (p.must) chips.push(["must", "⭐ 必去"]);
+  if (p.rainy) chips.push(["rainy", "🌧 雨天備案"]);
+  if (p.hideVisited) chips.push(["hideVisited", "隱藏去過的"]);
+  if (p.sort !== "new") chips.push(["sort", `排序：${SORTS[p.sort]}`]);
+  if (!chips.length) return "";
+  return `<div class="chip-row scroll">${chips.map(([k, l]) =>
+    `<button class="chip active removable" data-action="pocket-clear" data-k="${k}" aria-label="取消 ${esc(l)}">${esc(l)}${icon("x")}</button>`).join("")}</div>`;
+}
+
+ACTIONS["pocket-clear"] = el => {
+  const k = el.dataset.k, p = prefs.pocket;
+  if (k === "cat") p.cat = "all";
+  else if (k === "sort") p.sort = "new";
+  else p[k] = false;
+  savePrefs();
+  renderPocket();
+};
+
+ACTIONS["pocket-filters"] = () => {
+  const p = prefs.pocket;
+  const counts = { all: tripData.backups.length };
+  tripData.backups.forEach(b => { counts[b.category] = (counts[b.category] || 0) + 1; });
+  const catOpts = { all: { icon: "", label: `全部 ${counts.all}` } };
+  for (const [k, v] of Object.entries(CATEGORIES)) catOpts[k] = { icon: v.icon, label: `${v.label} ${counts[k] || 0}` };
+  openSheet({
+    title: "篩選與排序",
+    body: `
+      <span class="field-label">分類</span>
+      ${radioChips("cat", catOpts, p.cat)}
+      ${toggleField({ name: "must", label: "⭐ 只看必去", checked: p.must })}
+      ${toggleField({ name: "rainy", label: "🌧 只看雨天也適合的", checked: p.rainy })}
+      ${toggleField({ name: "hideVisited", label: "隱藏去過的", checked: p.hideVisited })}
+      <span class="field-label">排序</span>
+      ${radioChips("sort", Object.fromEntries(Object.entries(SORTS).map(([k, l]) => [k, { icon: "", label: l }])), p.sort)}`,
+    actions: [{ label: "清除", value: "reset", variant: "ghost" }, { label: "套用", value: "apply", variant: "primary" }],
+    onAction(v, d) {
+      if (v === "reset") Object.assign(p, { cat: "all", must: false, rainy: false, hideVisited: false, sort: "new" });
+      else if (v === "apply") Object.assign(p, { cat: d.cat || "all", must: !!d.must, rainy: !!d.rainy, hideVisited: !!d.hideVisited, sort: d.sort || "new" });
+      else return;
+      savePrefs();
+      renderPocket();
+      if (p.sort === "near" && !cachedPosition()) {
+        getMyPosition().then(renderPocketList).catch(err => toast(err.message));
+      }
+    }
+  });
+};
+
+// ===== 打卡：臨時去了某個地方，記進行程（完成）並評分 =====
+
+function nowHHMM() {
+  const d = new Date();
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function checkinTo(b, di) {
+  const day = tripData.days[di];
+  const item = normalizeItem({
+    time: nowHHMM(), text: b.name, note: b.note, lat: b.lat, lng: b.lng, placeId: b.placeId,
+    backupId: b.id, done: true
+  });
+  // 放在第一個還沒完成的行程前面，時間順序比較自然
+  const pos = day.items.findIndex(x => !x.done);
+  day.items.splice(pos < 0 ? day.items.length : pos, 0, item);
+  const prevStatus = b.status;
+  b.status = "visited";
+  prefs.expanded[day.id] = true;
+  saveTrip(); savePrefs(); refresh();
+  openSheet({
+    title: `去過「${b.name}」了 ✓`,
+    body: `
+      <p class="muted small">已記進 ${esc(dayLabel(di))} 的行程。順便留個紀錄，下次規劃會更好用：</p>
+      <div class="star-input" role="radiogroup" aria-label="評分">
+        ${[1, 2, 3, 4, 5].map(n => `<label><input type="radio" name="rating" value="${n}"><span aria-hidden="true">★</span><span class="sr-only">${n} 顆星</span></label>`).join("")}
+        <label class="star-clear"><input type="radio" name="rating" value="0" checked><span>不評分</span></label>
+      </div>
+      ${field({ name: "review", label: "一句心得（選填）", type: "textarea", rows: 2, placeholder: "例：芋圓很 Q，但要排隊 20 分鐘" })}`,
+    actions: [{ label: "復原打卡", value: "undo", variant: "ghost" }, { label: "完成", value: "save", variant: "primary" }],
+    onAction(v, d) {
+      if (v === "undo") {
+        day.items.splice(day.items.indexOf(item), 1);
+        b.status = prevStatus;
+        saveTrip(); refresh();
+        toast("已取消打卡");
+        return;
+      }
+      item.rating = Math.min(5, Math.max(0, parseInt(d.rating, 10) || 0));
+      item.review = str(d.review);
+      saveTrip(); refresh();
+      toast(item.rating ? `已打卡 ⭐${item.rating}` : "已打卡");
+    }
+  });
+}
+
+ACTIONS["backup-checkin"] = el => {
+  const b = findBackup(el.dataset.id);
+  if (!b) return;
+  const ti = todayIndex();
+  if (library.trips.includes(tripData) && ti >= 0) return checkinTo(b, ti);
+  // 不在旅途中：選要記在哪一天，或只標記去過
+  openSheet({
+    title: `打卡「${b.name}」`,
+    body: `<div class="sheet-list">
+      ${tripData.days.map((d, i) => `<button type="submit" name="_action" value="${i}" class="list-btn"><span class="day-badge">D${i + 1}</span><span><b>${esc(d.title)}</b><small>${esc(tripData.meta.title || "")} ${formatDateLabel(dayDate(i))}</small></span></button>`).join("")}
+      <button type="submit" name="_action" value="only" class="list-btn">${icon("check")}<span><b>只標記「去過了」</b><small>不加進任何行程</small></span></button>
+    </div>`,
+    actions: [{ label: "取消", value: "cancel", variant: "ghost" }],
+    onAction(v) {
+      if (v === "only") {
+        const prev = b.status;
+        b.status = "visited";
+        saveTrip(); refresh();
+        toast(`「${b.name}」標記為去過了`, { action: { label: "復原", fn: () => { b.status = prev; saveTrip(); refresh(); } } });
+        return;
+      }
+      if (v === "cancel" || v == null) return;
+      const di = +v;
+      setTimeout(() => checkinTo(b, di), 50);
+    }
+  });
+};

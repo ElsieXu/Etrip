@@ -119,6 +119,8 @@ async function enrichTargets(targets, hint = "") {
         t.lat = num(r.lat);
         t.lng = num(r.lng);
         if (r.place_id) t.placeId = r.place_id;
+        // 口袋名單沒填地區時，用地址自動補上
+        if ("area" in t && !t.area && r.address) t.area = areaFromAddress(r.address);
         found++;
       }
     });
