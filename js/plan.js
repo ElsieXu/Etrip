@@ -57,7 +57,7 @@ function dayCardHTML(day, i) {
         ${badge}
         <span class="day-title-wrap">
           <span class="day-title">${esc(day.title)}${isToday ? '<span class="pill accent">今天</span>' : ""}</span>
-          <span class="day-sub">${date ? formatDateLabel(date) + " · " : ""}<span class="nowrap">${day.items.length} 個行程</span>${done ? `<span class="nowrap">・完成 ${done}</span>` : ""}${wx ? `<span class="nowrap day-wx">　${weatherShort(wx)}</span>` : ""}</span>
+          <span class="day-sub">${date ? formatDateLabel(date) + " · " : ""}<span class="nowrap">${day.items.length} 個行程</span>${done ? `<span class="nowrap">・完成 ${done}</span>` : ""}${wx ? `<span class="nowrap day-wx" title="當天全天預報：最高 / 最低氣溫${wx.pop != null ? `、降雨機率 ${wx.pop}%` : ""}">　${weatherShort(wx)}</span>` : ""}</span>
         </span>`;
   return `
   <article class="card day-card ${isToday ? "is-today" : ""}" data-day="${i}">

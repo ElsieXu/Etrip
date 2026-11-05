@@ -235,7 +235,7 @@ async function fetchWeather(loc) {
 function weatherShort(w) {
   if (!w) return "";
   const i = wmoInfo(w.code);
-  return `${i.icon} ${w.max}°/${w.min}°${w.pop >= 40 ? ` 💧${w.pop}%` : ""}`;
+  return `${i.icon} 高${w.max}° 低${w.min}°${w.pop >= 40 ? ` 💧${w.pop}%` : ""}`;
 }
 
 // ===== 匯率（每天更新一次，存在手機裡，沒網路也能算） =====

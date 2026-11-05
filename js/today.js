@@ -225,7 +225,7 @@ function weatherRowHTML(i) {
   return `
   <div class="weather-row ${rainy ? "rainy" : ""}">
     <span class="wx-icon">${info.icon}</span>
-    <span class="wx-main"><b>${esc(info.text)} ${w.max}° / ${w.min}°</b><small>降雨機率 ${w.pop ?? "—"}%${tripData.meta.region ? ` · ${esc(tripData.meta.region)}` : ""}</small></span>
+    <span class="wx-main"><b>${esc(info.text)}　<span class="nowrap">最高 ${w.max}°</span> · <span class="nowrap">最低 ${w.min}°</span></b><small>當天全天預報，不是現在的氣溫 · 降雨機率 ${w.pop ?? "—"}%${tripData.meta.region ? ` · ${esc(tripData.meta.region)}` : ""}</small></span>
     ${rainy ? `<button class="btn sm" data-action="rain-backup">${icon("umbrella")}看雨天備案</button>` : ""}
   </div>`;
 }
