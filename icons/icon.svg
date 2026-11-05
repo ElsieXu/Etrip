@@ -1,11 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#3b82f6"/>
-      <stop offset="1" stop-color="#1d4ed8"/>
-    </linearGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b6ff0"/><stop offset="1" stop-color="#6d4be0"/></linearGradient>
+    <clipPath id="pocket"><path d="M13 23h38v19c0 7-5.5 12-12.5 12h-13C18.5 54 13 49 13 42z"/></clipPath>
   </defs>
-  <rect width="64" height="64" rx="16" fill="url(#g)"/>
-  <path d="M32 13c-8.3 0-15 6.5-15 14.6C17 38.5 32 51 32 51s15-12.5 15-23.4C47 19.5 40.3 13 32 13z" fill="#fff"/>
-  <circle cx="32" cy="27.5" r="6" fill="#2563eb"/>
+  <rect width="64" height="64" rx="15" fill="url(#bg)"/>
+  <!-- 從口袋探出頭的星星：收藏心動的地方 -->
+  <path d="M32 8.5l3.4 7.4 8 .9-6 5.5 1.7 7.9L32 26.2l-7.1 4 1.7-7.9-6-5.5 8-.9z" fill="#ffc24b"/>
+  <!-- 口袋裡裝著一張小地圖：這趟旅行想去的地方 -->
+  <g clip-path="url(#pocket)">
+    <rect x="13" y="23" width="38" height="31" fill="#f3f7ff"/>
+    <path d="M13 47c6-1 9-6 15-5s9 7 23 4v8H13z" fill="#cfe2ff"/>
+    <rect x="35" y="30" width="9" height="7" rx="2" fill="#d5f0dd"/>
+    <path d="M13 38h38M24 23v31M41 23v31" stroke="#fff" stroke-width="2.4"/>
+    <path d="M19 44c3-4 6-6 10-6.5s7 1.5 11-3" fill="none" stroke="#6d4be0" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.1 3.6"/>
+    <circle cx="40.5" cy="34.3" r="2.2" fill="#ff8a3d"/>
+  </g>
+  <!-- 口袋上緣與車縫線 -->
+  <path d="M13 23h38v6H13z" fill="#fff"/>
+  <path d="M16.5 26.5h31" stroke="#6d4be0" stroke-width="1.4" stroke-dasharray="2.4 2.2" stroke-linecap="round" opacity=".5"/>
+  <path d="M13 23h38v19c0 7-5.5 12-12.5 12h-13C18.5 54 13 49 13 42z" fill="none" stroke="#fff" stroke-width="1.6"/>
 </svg>
