@@ -98,7 +98,7 @@ ls Dockerfile DEPLOY.md
 - `你的網站網址`：前端網站的網址開頭，例如 `https://elsiexu.github.io`（只要到網域，不用後面的路徑）
 
 ```bash
-gcloud run deploy etrip-api --source . --region asia-east1 --allow-unauthenticated --set-env-vars "GEMINI_API_KEY=你的Gemini金鑰,GOOGLE_MAPS_API_KEY=你的Maps金鑰,ALLOWED_ORIGINS=你的網站網址"
+gcloud run deploy etrip-api --source . --region asia-east1 --allow-unauthenticated --max-instances=2 --set-env-vars "GEMINI_API_KEY=你的Gemini金鑰,GOOGLE_MAPS_API_KEY=你的Maps金鑰,ALLOWED_ORIGINS=你的網站網址"
 ```
 
 - 第一次會問要不要建立 Artifact Registry 存放區，輸入 `Y`
@@ -114,8 +114,9 @@ gcloud run deploy etrip-api --source . --region asia-east1 --allow-unauthenticat
 ## 9. 設定預算提醒（建議）
 
 1. 主控台左上選單 → **帳單** → **預算與快訊** → **建立預算**
-2. 金額填 `1`（美元），門檻保留預設的 50%、90%、100%
+2. 金額填 `11`（美元，或 NT$350），門檻保留預設的 50%、90%、100%
 3. 超過時會寄信通知你（預算提醒只會通知，不會自動停用服務）
+4. AI 的每月花費上限（到了會自動停用）在 AI Studio 設定，步驟見 [MAINTENANCE.md](MAINTENANCE.md) 第 6 點
 
 ## 10. 保護金鑰（建議）
 
@@ -126,10 +127,12 @@ gcloud run deploy etrip-api --source . --region asia-east1 --allow-unauthenticat
 
 ## 之後要更新後端
 
+更完整的維護說明（換 AI 模型、出問題怎麼查、費用）見 [MAINTENANCE.md](MAINTENANCE.md)。
+
 在 Cloud Shell：
 
 ```bash
-cd Etrip && git pull
+cd Etrip && git checkout main && git pull
 ```
 
 ```bash
@@ -149,6 +152,10 @@ gcloud run services update etrip-api --region asia-east1 --update-env-vars "ALLO
 | `GEMINI_MODEL` | 整理行程、抓地點用的模型，預設 `gemini-3.5-flash-lite` |
 | `GEMINI_VIDEO_MODEL` | 看 YouTube 影片用的模型，預設和上面相同。想要更準可以改成較強的 Flash 模型（費用較高） |
 | `AI_PROVIDER` | 設成 `openai` 並加上 `OPENAI_API_KEY`，可以改回 OpenAI（不支援影片） |
+| `DAILY_AI_LIMIT` | 每台機器每天最多幾次 AI 請求，預設 20 |
+| `DAILY_GEO_LIMIT` | 每台機器每天最多查幾次座標，預設 150 |
+| `MONTHLY_AI_BUDGET_USD` | 每月 AI 預算（美元），預設 10；要和 AI Studio 的花費上限一致 |
+| `VIDEO_MAX_MINUTES` | YouTube 影片最多看幾分鐘，預設 50 |
 
 ## Render 可以關掉了嗎？
 

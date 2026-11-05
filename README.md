@@ -91,11 +91,12 @@ vendor/               SortableJS、lz-string、qrcode-generator（放在本地�
 server.py             後端（Flask，部署在 Google Cloud Run）
 Dockerfile            Cloud Run 用
 DEPLOY.md             搬到 Cloud Run 的一步一步說明
+MAINTENANCE.md        後續維護：入口、更新方式、出問題怎麼查、費用
 ```
 
 ## 後端（server.py）
 
-部署方式見 **[DEPLOY.md](DEPLOY.md)**。AI 使用 Google Gemini，雲端同步使用 Firestore。
+部署方式見 **[DEPLOY.md](DEPLOY.md)**，後續維護與費用見 **[MAINTENANCE.md](MAINTENANCE.md)**。AI 使用 Google Gemini，雲端同步使用 Firestore。
 
 | 變數 | 說明 |
 |---|---|
@@ -104,8 +105,21 @@ DEPLOY.md             搬到 Cloud Run 的一步一步說明
 | `ALLOWED_ORIGINS` | 只允許自己的網站呼叫，例如 `https://elsiexu.github.io`（不設定 = 全部允許，別人可能用掉你的額度） |
 | `GEMINI_MODEL` / `GEMINI_VIDEO_MODEL` | 選填，預設 `gemini-3.5-flash-lite` |
 | `AI_PROVIDER` | 選填，設成 `openai`（搭配 `OPENAI_API_KEY`）可以改回 OpenAI，但不支援影片 |
+| `DAILY_AI_LIMIT` / `DAILY_GEO_LIMIT` | 選填，每台機器每天最多幾次 AI 請求 / 座標查詢，預設 20 / 150 |
+| `MONTHLY_AI_BUDGET_USD` | 選填，每月 AI 預算（美元），預設 10。用到 85% 提醒、100% 停用 |
+| `VIDEO_MAX_MINUTES` | 選填，YouTube 影片最多看幾分鐘，預設 50 |
+
+後端網址是公開的，所以每個 IP 都有使用次數限制，每天也有總量上限，避免被濫用而產生費用（見 MAINTENANCE.md「防濫用設定」）。
 
 ---
+
+### 2026-11 更新（第六批：資安）
+
+- 後端加上使用次數限制（每個 IP、每天總量），避免 AI 功能被濫用
+- 每月 AI 預算：用到 85% 時提醒、用完自動停用；YouTube 影片最多看前 50 分鐘
+- 「工具 → 雲端同步 → 同步碼外流了？」：換一組新的同步碼，或刪除雲端資料
+- 同步碼在別台裝置換掉時，會提示輸入新的同步碼
+- 新增 MAINTENANCE.md：維護入口、更新方式、出問題怎麼查、費用
 
 ### 2026-11 更新（第五批：導覽與分享）
 

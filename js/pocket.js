@@ -74,7 +74,8 @@ function renderPocket() {
       <div class="radar-body">
         <textarea id="radarText" rows="4" placeholder="貼上影片說明文字、筆記、清單，或 YouTube / 部落格網址…"></textarea>
         <input id="radarSource" placeholder="來源連結（選填）：IG / TikTok 網址">
-        <p class="field-hint">▶ YouTube 公開影片：直接貼網址，AI 會看完影片找出介紹的地點（約 30 秒～2 分鐘）。<br>IG、TikTok 的網址讀不到內容：請把影片說明文字貼在上面，網址填在「來源連結」，到現場可以一鍵打開影片。</p>
+        <p class="field-hint">▶ YouTube 公開影片：直接貼網址，AI 會看影片找出介紹的地點（最多看前 50 分鐘，約 30 秒～2 分鐘）。<br>IG、TikTok 的網址讀不到內容：請把影片說明文字貼在上面，網址填在「來源連結」，到現場可以一鍵打開影片。</p>
+        ${aiBudgetNoteHTML()}
         <button class="btn primary block" data-action="radar-run">${icon("sparkles")}抓取地點</button>
       </div>
     </details>
@@ -405,6 +406,7 @@ ACTIONS["radar-run"] = async el => {
       return;
     }
     showRadarPreview(places, safeUrl(source));
+    if (places.clipped) toast(`影片超過 ${places.clipped} 分鐘，AI 只看了前 ${places.clipped} 分鐘`, { duration: 6000 });
   } catch (e) {
     setBusy(el, false);
     toast(e.message);

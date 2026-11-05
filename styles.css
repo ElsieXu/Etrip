@@ -1093,3 +1093,12 @@ a.list-btn { text-decoration: none; }
 
 /* 貼上網址時，「收藏」按鈕變成「抓地點」 */
 .quick-add .btn.is-link { background: var(--accent); border-color: var(--accent); }
+
+/* 同步碼失效時的提示 */
+.sync-gone { margin: 10px 0; padding: 12px 14px; border-radius: 12px; background: var(--warn-soft); }
+.sync-gone p { margin: 0 0 10px; font-size: 14px; }
+.sheet-list { margin: 8px 0 12px; padding-left: 20px; display: grid; gap: 8px; }
+
+/* 每月 AI 額度提醒 */
+.ai-budget-note { margin: 8px 0; padding: 10px 12px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); font-size: 13px; font-weight: 600; }
+.ai-budget-note.out { background: var(--danger-soft, var(--warn-soft)); color: var(--danger, var(--warn)); }

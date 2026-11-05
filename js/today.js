@@ -24,7 +24,7 @@ function renderToday() {
   const single = days.length === 1;
   if (phase === "before") {
     const n = daysBetween(toISODate(new Date()), dayDate(0));
-    banner = `<div class="banner">${icon(single ? "sun" : "plane")}<span>出發前預覽 · ${n === 1 ? "<b>明天</b>就出發" : `還有 <b>${n}</b> 天出發`}</span></div>`;
+    banner = `<div class="banner">${icon(single ? "sun" : transportIcon(tripData.flight.depart))}<span>出發前預覽 · ${n === 1 ? "<b>明天</b>就出發" : `還有 <b>${n}</b> 天出發`}</span></div>`;
   } else if (phase === "after") {
     banner = `<div class="banner muted">${icon("check")}<span>旅程已經結束，補上評分和心得，留個紀錄吧</span><button class="btn sm" data-action="go" data-view="plan">看回顧</button></div>`;
   } else if (phase === "undated") {
@@ -225,7 +225,7 @@ function weatherRowHTML(i) {
   return `
   <div class="weather-row ${rainy ? "rainy" : ""}">
     <span class="wx-icon">${info.icon}</span>
-    <span class="wx-main"><b>${esc(info.text)} ${w.max}° / ${w.min}°</b><small>降雨機率 ${w.pop ?? "—"}%${tripData.meta.region ? ` · ${esc(tripData.meta.region)}` : ""}</small></span>
+    <span class="wx-main"><b>${esc(info.text)}　<span class="nowrap">最高 ${w.max}°</span> · <span class="nowrap">最低 ${w.min}°</span></b><small>當天全天預報，不是現在的氣溫 · 降雨機率 ${w.pop ?? "—"}%${tripData.meta.region ? ` · ${esc(tripData.meta.region)}` : ""}</small></span>
     ${rainy ? `<button class="btn sm" data-action="rain-backup">${icon("umbrella")}看雨天備案</button>` : ""}
   </div>`;
 }

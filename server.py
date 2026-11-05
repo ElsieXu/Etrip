@@ -5,7 +5,7 @@ Etrip 後端（Flask，部署在 Google Cloud Run）
 - /extract_places     AI 從文字中抽出景點 / 餐廳 / 商店
 - /extract_url        讀取網址抽出地點；YouTube 影片會直接讓 Gemini 看影片
 - /enrich_locations   地點名稱轉座標（Google Geocoding API）
-- /sync               雲端同步（Firestore）：建立同步碼、讀取、儲存
+- /sync               雲端同步（Firestore）：建立同步碼、讀取、儲存、刪除
 - /health             健康檢查 / 提早喚醒
 
 環境變數：
@@ -16,6 +16,15 @@ Etrip 後端（Flask，部署在 Google Cloud Run）
   ALLOWED_ORIGINS      選填，只允許自己的網站呼叫，逗號分隔
                        例如 https://elsiexu.github.io
   SYNC_COLLECTION      選填，Firestore 集合名稱，預設 etrip_sync
+  DAILY_AI_LIMIT       選填，每台機器每天最多幾次 AI 請求，預設 20
+  DAILY_GEO_LIMIT      選填，每台機器每天最多查幾次座標，預設 150
+  MONTHLY_AI_BUDGET_USD  選填，每月 AI 預算（美元），預設 10；用到 85% 提醒，100% 停用
+  GEMINI_PRICE_IN / GEMINI_PRICE_AUDIO / GEMINI_PRICE_OUT
+                       選填，每百萬 tokens 的價格（美元），用來估算花費，預設 0.30 / 1.00 / 2.50
+  VIDEO_MAX_MINUTES    選填，YouTube 影片最多看幾分鐘，預設 50
+
+防濫用：每個 IP 有使用次數限制（見 RATE_RULES），加上每天的總量上限。
+網址是公開的，任何人都能直接呼叫，這些限制讓費用不會失控。
 
   （選用）AI_PROVIDER=openai 搭配 OPENAI_API_KEY、OPENAI_MODEL，可以改回 OpenAI
 """
@@ -27,8 +36,12 @@ import os
 import re
 import secrets
 import socket
+import threading
+import time
 import zlib
-from datetime import date
+from collections import deque
+from functools import wraps
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import parse_qs, urljoin, urlparse
 
 import requests
@@ -55,6 +68,15 @@ SYNC_COLLECTION = os.getenv("SYNC_COLLECTION", "etrip_sync")
 MAX_TEXT = 15000        # 送給 AI 的文字上限
 MAX_PLACES = 80         # 一次最多補幾個座標
 MAX_SYNC_BYTES = 900_000  # Firestore 單筆上限約 1MB（壓縮後）
+VIDEO_MAX_SECONDS = int(float(os.getenv("VIDEO_MAX_MINUTES", "50")) * 60)
+
+# 每月 AI 預算：用每次回應的 token 數估算花費，存在 Firestore（所有機器共用）
+MONTHLY_AI_BUDGET_USD = float(os.getenv("MONTHLY_AI_BUDGET_USD", "10"))
+BUDGET_WARN_RATIO = 0.85
+PRICE_IN = float(os.getenv("GEMINI_PRICE_IN", "0.30"))        # 文字、圖片、影片畫面
+PRICE_AUDIO = float(os.getenv("GEMINI_PRICE_AUDIO", "1.00"))  # 影片的聲音（通常比較貴）
+PRICE_OUT = float(os.getenv("GEMINI_PRICE_OUT", "2.50"))      # 回應（含思考）
+USAGE_COLLECTION = os.getenv("USAGE_COLLECTION", "etrip_usage")
 
 CATEGORY_HINT = "category 只能是 food（餐廳小吃）、cafe（咖啡甜點）、sight（景點）、shop（購物）、other 其中之一"
 
@@ -94,8 +116,8 @@ def parse_json_text(text):
     return {}
 
 
-def ask_json(prompt, video_url=None):
-    """送出提示並取得 JSON 物件；video_url 是 YouTube 網址時會一起送影片"""
+def ask_json(prompt, video_url=None, clip=False):
+    """送出提示並取得 JSON 物件；video_url 是 YouTube 網址時會一起送影片，clip=True 只看前 VIDEO_MAX_SECONDS 秒"""
     if AI_PROVIDER == "openai":
         if video_url:
             raise AIError("目前的 AI 設定不支援讀取影片，請改用 Gemini")
@@ -117,17 +139,190 @@ def ask_json(prompt, video_url=None):
     model = GEMINI_MODEL
     if video_url:
         # 影片用低解析度：找地點不需要高畫質，費用約只要三分之一
-        contents = [types.Part(file_data=types.FileData(file_uri=video_url)), prompt]
+        meta = types.VideoMetadata(end_offset=f"{VIDEO_MAX_SECONDS}s") if clip else None
+        contents = [types.Part(file_data=types.FileData(file_uri=video_url), video_metadata=meta), prompt]
         config["media_resolution"] = types.MediaResolution.MEDIA_RESOLUTION_LOW
         model = GEMINI_VIDEO_MODEL
     res = gemini_client().models.generate_content(
         model=model, contents=contents, config=types.GenerateContentConfig(**config)
     )
+    add_usage(cost_of(getattr(res, "usage_metadata", None), video=bool(video_url)))
     return parse_json_text(res.text)
+
+
+# ===============================
+# 每月 AI 預算
+# ===============================
+
+def billing_month():
+    # Google 帳單以太平洋時間為準，這裡用 UTC-8 近似
+    return (datetime.now(timezone.utc) - timedelta(hours=8)).strftime("%Y-%m")
+
+
+def cost_of(u, video=False):
+    """用 token 數估算這次花了多少美元"""
+    if u is None:
+        # 沒有用量資料時保守估計
+        return (VIDEO_MAX_SECONDS * 100 * PRICE_AUDIO if video else 8000 * PRICE_IN + 3000 * PRICE_OUT) / 1e6
+    prompt = u.prompt_token_count or 0
+    audio = sum((d.token_count or 0) for d in (u.prompt_tokens_details or []) if "AUDIO" in str(d.modality).upper())
+    out = (u.candidates_token_count or 0) + (u.thoughts_token_count or 0)
+    return ((prompt - audio) * PRICE_IN + audio * PRICE_AUDIO + out * PRICE_OUT) / 1e6
+
+
+_usage = {"month": "", "usd": 0.0, "ts": 0.0}
+
+
+def usage_ref(month):
+    return firestore_db().collection(USAGE_COLLECTION).document(month)
+
+
+def usage_usd():
+    """這個月已經花了多少（每分鐘最多讀一次資料庫）"""
+    m, now = billing_month(), time.time()
+    if _usage["month"] == m and now - _usage["ts"] < 60:
+        return _usage["usd"]
+    try:
+        snap = usage_ref(m).get()
+        usd = float((snap.to_dict() or {}).get("usd", 0)) if snap.exists else 0.0
+    except Exception as e:  # noqa: BLE001
+        print("讀取用量失敗:", repr(e))
+        usd = _usage["usd"] if _usage["month"] == m else 0.0
+    _usage.update(month=m, usd=usd, ts=now)
+    return usd
+
+
+def add_usage(usd):
+    if usd <= 0:
+        return
+    m = billing_month()
+    if _usage["month"] != m:
+        usage_usd()
+    _usage["usd"] += usd
+    try:
+        from google.cloud import firestore
+        usage_ref(m).set({"usd": firestore.Increment(usd), "calls": firestore.Increment(1),
+                          "updatedAt": firestore.SERVER_TIMESTAMP}, merge=True)
+    except Exception as e:  # noqa: BLE001
+        print("記錄用量失敗:", repr(e))
+
+
+def budget_info():
+    pct = usage_usd() / MONTHLY_AI_BUDGET_USD * 100 if MONTHLY_AI_BUDGET_USD > 0 else 0
+    return {"pct": min(100, round(pct)), "month": billing_month()}
+
+
+BUDGET_OUT_MSG = "這個月的 AI 額度用完了，下個月 1 號會恢復。其他功能都可以正常使用"
 
 
 def error(message, status=400):
     return jsonify({"error": message}), status
+
+
+# ===============================
+# 防濫用：使用次數限制
+# 存在記憶體裡，每台機器各自計算（Cloud Run 設定最多 2 台）
+# ===============================
+
+# 每個 IP：(秒數, 次數)
+RATE_RULES = {
+    "ai": [(60, 8), (3600, 40)],      # AI 整理、抓地點
+    "geo": [(60, 15), (3600, 120)],   # 補座標
+    "sync": [(60, 60)],               # 同步讀寫（開著網站時約每分鐘一次）
+    "sync_new": [(3600, 5)],          # 建立新的同步碼
+}
+DAILY_LIMITS = {
+    "ai": int(os.getenv("DAILY_AI_LIMIT", "20")),
+    "geo": int(os.getenv("DAILY_GEO_LIMIT", "150")),
+}
+
+_rate_lock = threading.Lock()
+_hits = {}                 # (類別, IP) → 最近的請求時間
+_daily = {"day": "", "ai": 0, "geo": 0}
+_last_prune = [0.0]
+
+
+def client_ip():
+    # Cloud Run 會把真正的來源 IP 放在 X-Forwarded-For 的最後面（前面的值可能是使用者自己填的）
+    fwd = request.headers.get("X-Forwarded-For", "")
+    ip = fwd.split(",")[-1].strip() if fwd else ""
+    return ip or request.remote_addr or "?"
+
+
+def _wait_text(sec):
+    return f"{int(sec) + 1} 秒" if sec < 60 else f"{int(sec // 60) + 1} 分鐘"
+
+
+def check_rate(kind):
+    """超過限制時回傳錯誤訊息，沒超過就記一次並回傳 None"""
+    rules = RATE_RULES[kind]
+    now = time.time()
+    key = (kind, client_ip())
+    with _rate_lock:
+        if now - _last_prune[0] > 600:      # 定期清掉很久沒來的 IP
+            longest = max(w for r in RATE_RULES.values() for w, _ in r)
+            for k in [k for k, q in _hits.items() if not q or now - q[-1] > longest]:
+                del _hits[k]
+            _last_prune[0] = now
+        q = _hits.setdefault(key, deque())
+        longest = max(w for w, _ in rules)
+        while q and now - q[0] > longest:
+            q.popleft()
+        for window, limit in rules:
+            recent = [t for t in q if now - t <= window]
+            if len(recent) >= limit:
+                wait = window - (now - recent[0])
+                return f"使用太頻繁了，請過 {_wait_text(wait)}再試"
+        q.append(now)
+    return None
+
+
+def use_daily(kind, n=1):
+    """每天的總量上限（所有人加起來）。超過回傳 False"""
+    today = date.today().isoformat()
+    with _rate_lock:
+        if _daily["day"] != today:
+            _daily.update(day=today, ai=0, geo=0)
+        if _daily[kind] + n > DAILY_LIMITS[kind]:
+            return False
+        _daily[kind] += n
+        return True
+
+
+def limited(kind, daily=False):
+    def deco(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            if request.method == "OPTIONS":
+                return fn(*args, **kwargs)
+            msg = check_rate(kind)
+            if msg:
+                return error(msg, 429)
+            if kind == "ai" and AI_PROVIDER == "gemini" and budget_info()["pct"] >= 100:
+                return jsonify({"error": BUDGET_OUT_MSG, "budget": budget_info()}), 429
+            if daily and not use_daily(kind):
+                print(f"今天的 {kind} 總量已達上限 {DAILY_LIMITS[kind]}")
+                return error("今天的 AI 使用量已達上限，明天再試，或請網站管理員調整", 429)
+            return fn(*args, **kwargs)
+        return wrapper
+    return deco
+
+
+AI_ENDPOINTS = {"parse_trip", "extract_places", "extract_url"}
+
+
+@app.after_request
+def attach_budget(resp):
+    """AI 的回應附上本月額度用了幾 %，前端到 85% 會提醒"""
+    if request.endpoint in AI_ENDPOINTS and resp.status_code == 200 and resp.is_json and AI_PROVIDER == "gemini":
+        data = resp.get_json(silent=True)
+        if isinstance(data, dict):
+            try:
+                data["budget"] = budget_info()
+                resp.set_data(json.dumps(data, ensure_ascii=False))
+            except Exception as e:  # noqa: BLE001
+                print("附加用量失敗:", repr(e))
+    return resp
 
 
 def ai_failed(e, where):
@@ -137,6 +332,10 @@ def ai_failed(e, where):
         return error(msg, 400)
     if "API key" in msg or "PERMISSION_DENIED" in msg or "401" in msg:
         return error("AI 金鑰設定有問題，請檢查伺服器的 GEMINI_API_KEY", 502)
+    if "spend" in msg.lower():
+        # AI Studio 的每月花費上限到了
+        _usage.update(month=billing_month(), usd=max(_usage["usd"], MONTHLY_AI_BUDGET_USD), ts=time.time())
+        return jsonify({"error": BUDGET_OUT_MSG, "budget": {"pct": 100, "month": billing_month()}}), 429
     if "RESOURCE_EXHAUSTED" in msg or "429" in msg:
         return error("AI 使用量暫時達到上限，請稍後再試", 429)
     return error("AI 服務暫時無法使用，請稍後再試", 502)
@@ -152,6 +351,7 @@ def health():
 # ===============================
 
 @app.route("/parse", methods=["POST"])
+@limited("ai", daily=True)
 def parse_trip():
     data = request.get_json(silent=True) or {}
     text = str(data.get("text", ""))[:MAX_TEXT]
@@ -226,6 +426,7 @@ def extract_places_from_text(text, title=""):
 
 
 @app.route("/extract_places", methods=["POST"])
+@limited("ai", daily=True)
 def extract_places():
     data = request.get_json(silent=True) or {}
     text = str(data.get("text", ""))[:MAX_TEXT]
@@ -259,6 +460,16 @@ def youtube_url(url):
     if vid and re.fullmatch(r"[\w-]{6,20}", vid):
         return f"https://www.youtube.com/watch?v={vid}"
     return None
+
+
+def youtube_seconds(url):
+    """影片長度（秒），讀不到回傳 None"""
+    try:
+        r = requests.get(url, headers={"Accept-Language": "en"}, timeout=8)
+        m = re.search(r'"lengthSeconds":"(\d+)"', r.text)
+        return int(m.group(1)) if m else None
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def youtube_title(url):
@@ -302,6 +513,7 @@ def fetch_page(url):
 
 
 @app.route("/extract_url", methods=["POST"])
+@limited("ai", daily=True)
 def extract_url():
     data = request.get_json(silent=True) or {}
     url = str(data.get("text", "")).strip()
@@ -315,14 +527,24 @@ def extract_url():
 請從影片的畫面、字幕和旁白中，找出所有介紹到、可以實際前往的景點、餐廳、咖啡廳或商店。
 {PLACES_FORMAT}
 """
+        secs = youtube_seconds(yt)
+        clip = secs is None or secs > VIDEO_MAX_SECONDS   # 不知道長度時也先剪，避免超長影片
         try:
-            places = clean_places(ask_json(prompt, video_url=yt))
+            try:
+                places = clean_places(ask_json(prompt, video_url=yt, clip=clip))
+            except Exception as e:  # noqa: BLE001
+                # 不知道長度、影片其實比上限短時，剪輯的位置超過片長可能會被拒絕：改成不剪再試一次
+                if not (clip and secs is None and "INVALID_ARGUMENT" in str(e)):
+                    raise
+                places = clean_places(ask_json(prompt, video_url=yt))
         except Exception as e:  # noqa: BLE001
             msg = str(e)
             if "INVALID_ARGUMENT" in msg or "not found" in msg.lower() or "private" in msg.lower():
                 return error("這支影片無法讀取，可能是私人或未公開影片", 400)
             return ai_failed(e, "youtube")
-        return jsonify({"places": places, "title": title, "source": yt, "video": True})
+        clipped = bool(secs and secs > VIDEO_MAX_SECONDS)
+        return jsonify({"places": places, "title": title, "source": yt, "video": True,
+                        "clipped_minutes": VIDEO_MAX_SECONDS // 60 if clipped else 0})
 
     try:
         html = fetch_page(url)
@@ -372,6 +594,7 @@ def geocode(query):
 
 
 @app.route("/enrich_locations", methods=["POST"])
+@limited("geo")
 def enrich_locations():
     data = request.get_json(silent=True) or {}
     places = data.get("places", [])[:MAX_PLACES]
@@ -390,8 +613,12 @@ def enrich_locations():
             r = None
             # 有地區提示時先加上地區查，查不到再只用名稱查
             if hint and hint not in name:
+                if not use_daily("geo"):
+                    break
                 r = geocode(f"{name} {hint}")
             if not r:
+                if not use_daily("geo"):
+                    break
                 r = geocode(name)
             if r:
                 loc = r["geometry"]["location"]
@@ -453,6 +680,7 @@ def sync_unavailable(e):
 
 
 @app.route("/sync", methods=["POST"])
+@limited("sync_new")
 def sync_create():
     data = (request.get_json(silent=True) or {}).get("data")
     if not isinstance(data, dict):
@@ -475,6 +703,7 @@ def sync_create():
 
 
 @app.route("/sync/<code>", methods=["GET"])
+@limited("sync")
 def sync_get(code):
     c = normalize_code(code)
     if not c:
@@ -490,6 +719,7 @@ def sync_get(code):
 
 
 @app.route("/sync/<code>", methods=["PUT"])
+@limited("sync")
 def sync_put(code):
     c = normalize_code(code)
     if not c:
@@ -525,6 +755,23 @@ def sync_put(code):
         return jsonify(payload)
     except ValueError as e:
         return error(str(e), 413)
+    except Exception as e:  # noqa: BLE001
+        return sync_unavailable(e)
+
+
+@app.route("/sync/<code>", methods=["DELETE"])
+@limited("sync")
+def sync_delete(code):
+    """刪除雲端上的資料（換新同步碼、或不再使用雲端同步時）"""
+    c = normalize_code(code)
+    if not c:
+        return error("同步碼格式不正確", 400)
+    try:
+        ref = doc_ref(c)
+        if not ref.get().exists:
+            return error("找不到這個同步碼", 404)
+        ref.delete()
+        return jsonify({"ok": True})
     except Exception as e:  # noqa: BLE001
         return sync_unavailable(e)
 
