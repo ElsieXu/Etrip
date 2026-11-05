@@ -36,7 +36,7 @@
 打開 Cloud Shell，一次貼一段：
 
 ```bash
-cd Etrip && git checkout main && git pull
+cd ~/Etrip && git checkout main && git pull
 ```
 
 ```bash
@@ -45,7 +45,12 @@ gcloud run deploy etrip-api --source . --region asia-east1
 
 金鑰和其他環境變數會沿用上次的設定。
 
-> Cloud Shell 裡如果沒有 `Etrip` 資料夾（太久沒用會被清掉），先執行 `git clone https://github.com/ElsieXu/Etrip.git`。
+部署完打開 `https://etrip-api-690497062302.asia-east1.run.app/health`（最後要加 `/health`）：
+
+- `version` 是後端的版本日期，和 PR 說明裡寫的一樣，就代表已經是新版
+- `revision` 是 Cloud Run 的部署編號，每部署一次數字就會變
+
+> Cloud Shell 裡如果沒有 `Etrip` 資料夾（太久沒用會被清掉），先執行 `cd ~ && git clone https://github.com/ElsieXu/Etrip.git`。
 
 ### 3. 定期檢查
 
@@ -149,7 +154,7 @@ gcloud run services update etrip-api --region asia-east1 --max-instances=2
 
 | 狀況 | 先檢查 |
 |---|---|
-| AI 整理、抓地點都失敗 | 1. 打開 `後端網址/health`，看到 `{"ok": true, ...}` 代表後端有開<br>2. 到 Cloud Run → `etrip-api` →「記錄」看錯誤訊息<br>3. 錯誤裡有 `model` 或 `not found` → 模型退役了，見「換 AI 模型」<br>4. 錯誤裡有 `quota` 或 `429` → Gemini 用量到上限，到 AI Studio 看 |
+| AI 整理、抓地點都失敗 | 1. 打開 `後端網址/health`，看到 `{"ok": true, ...}` 代表後端有開，`version` 是後端的版本日期<br>2. 到 Cloud Run → `etrip-api` →「記錄」看錯誤訊息<br>3. 錯誤裡有 `model` 或 `not found` → 模型退役了，見「換 AI 模型」<br>4. 錯誤裡有 `quota` 或 `429` → Gemini 用量到上限，到 AI Studio 看 |
 | 出現「使用太頻繁了」 | 防濫用的次數限制，等畫面上寫的時間就好。正常使用很少碰到 |
 | 出現「今天的 AI 使用量已達上限」 | 所有人加起來超過每天的總量。偶爾一次可以不管，常常發生就調高 `DAILY_AI_LIMIT`（見第 6 點） |
 | 出現「本月 AI 額度已用 85%」 | 快到每月預算了，月底前省著用。到 AI Studio 的 Spend 頁看實際花費 |

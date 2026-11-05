@@ -72,7 +72,7 @@ gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${PR
 ## 6. 下載程式碼
 
 ```bash
-git clone https://github.com/ElsieXu/Etrip.git && cd Etrip
+cd ~ && git clone https://github.com/ElsieXu/Etrip.git && cd Etrip
 ```
 
 **新版還沒合併到 main 之前，一定要切換到新版分支**（不然會部署到舊版，出現 `Building using Buildpacks` 然後失敗）：
@@ -107,7 +107,7 @@ gcloud run deploy etrip-api --source . --region asia-east1 --allow-unauthenticat
 
 ## 8. 確認可以用，並把網址填進網站
 
-1. 在瀏覽器打開 `你的Service URL/health`，看到 `{"ok": true, ...}` 就成功了
+1. 在瀏覽器打開 `你的Service URL/health`（網址最後要加 `/health`），看到 `{"ok": true, ...}` 就成功了
 2. 打開 Etrip 網站 → **工具 → 進階設定 → 伺服器網址**，貼上 Service URL 並儲存
    - 每台裝置都要設定一次；或請我把網址直接寫進 `js/config.js`，之後所有裝置自動套用
 
@@ -132,7 +132,7 @@ gcloud run deploy etrip-api --source . --region asia-east1 --allow-unauthenticat
 在 Cloud Shell：
 
 ```bash
-cd Etrip && git checkout main && git pull
+cd ~/Etrip && git checkout main && git pull
 ```
 
 ```bash
