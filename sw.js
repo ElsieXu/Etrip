@@ -3,7 +3,7 @@
 // 更新網站檔案後，記得把 CACHE 的版本號 +1
 // =========================================
 
-const CACHE = "etrip-v10";
+const CACHE = "etrip-v11";
 const ASSETS = [
   "./",
   "index.html",
@@ -50,35 +50,22 @@ self.addEventListener("activate", e => {
 self.addEventListener("fetch", e => {
   const req = e.request;
   const url = new URL(req.url);
-  // 只處理本站的 GET；AI / 定位 API 一律走網路
+  // 只處理本站的 GET；AI / 天氣 / 匯率等外部服務一律走網路
   if (req.method !== "GET" || url.origin !== self.location.origin) return;
 
-  // 網頁本身：先試網路（3 秒內），拿不到就用快取
-  if (req.mode === "navigate") {
-    e.respondWith(
-      Promise.race([
-        fetch(req).then(res => {
-          const copy = res.clone();
-          caches.open(CACHE).then(c => c.put("index.html", copy));
-          return res;
-        }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000))
-      ]).catch(() => caches.match("index.html").then(r => r || fetch(req)))
-    );
-    return;
-  }
-
-  // 其他檔案：先用快取（快），同時在背景更新
+  // 一律「先試網路」：有網路時拿到的一定是最新版（網站更新後不會先跑到舊版）；
+  // 網路太慢（3 秒）或離線時，才用存在手機裡的版本
+  const key = req.mode === "navigate" ? "index.html" : req;
   e.respondWith(
-    caches.match(req, { ignoreSearch: true }).then(cached => {
-      const network = fetch(req).then(res => {
+    Promise.race([
+      fetch(req).then(res => {
         if (res.ok) {
           const copy = res.clone();
-          caches.open(CACHE).then(c => c.put(req, copy));
+          caches.open(CACHE).then(c => c.put(key, copy));
         }
         return res;
-      }).catch(() => cached);
-      return cached || network;
-    })
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000))
+    ]).catch(() => caches.match(key, { ignoreSearch: true }).then(r => r || fetch(req)))
   );
 });

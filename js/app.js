@@ -129,6 +129,18 @@ function init() {
   });
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
     navigator.serviceWorker.register("sw.js").catch(err => console.warn("Service worker 註冊失敗", err));
+    // 有新版時自動換成新版（第一次安裝不需要）；正在編輯時改成提示，不打斷
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!hadController || reloading) return;
+      if ($("#sheet").open || document.activeElement?.matches("input, textarea")) {
+        toast("Etrip 有新版本", { action: { label: "更新", fn: () => location.reload() }, duration: 10000 });
+        return;
+      }
+      reloading = true;
+      location.reload();
+    });
   }
 }
 

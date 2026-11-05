@@ -1069,3 +1069,24 @@ a.list-btn { text-decoration: none; }
 }
 .demo-banner span { flex: 1 1 220px; }
 .selectable { user-select: all; word-break: break-all; }
+
+/* 示範導覽卡片 */
+.demo-tour {
+  margin-bottom: 14px; padding: 16px; border-radius: var(--radius);
+  background: var(--surface); border: 2px solid var(--accent);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.demo-tour-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.demo-tour-step { font-size: 13px; font-weight: 800; color: var(--accent); letter-spacing: .04em; }
+.demo-dots { display: flex; gap: 5px; flex: 1; }
+.demo-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--surface-3); }
+.demo-dots i.on { background: var(--accent); width: 20px; border-radius: 4px; }
+.demo-tour h2 { font-size: 20px; font-weight: 800; margin-bottom: 6px; }
+.demo-tour > p { font-size: 15px; color: var(--text-2); }
+.demo-tour .btn-row { margin-top: 12px; }
+.demo-tour-foot { margin-top: 10px; font-size: 12px; color: var(--muted); }
+.link-btn { border: 0; background: none; padding: 0 4px; min-height: 40px; color: var(--primary); font: inherit; font-weight: 700; cursor: pointer; text-decoration: underline; }
+
+.fab { transition: opacity .2s, transform .2s; }
+.fab.fab-hidden { opacity: 0; transform: translateY(16px); pointer-events: none; }
+.demo-tour-head .link-btn { font-size: 13px; text-decoration: none; }

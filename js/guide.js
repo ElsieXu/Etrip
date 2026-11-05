@@ -32,6 +32,7 @@ const TIPS = [
 
 /** 這一頁要顯示的提示（只挑第一個還沒看過的） */
 function tipHTML(view) {
+  if (DEMO && !prefs.demoTourDone) return "";
   const seen = prefs.tips || {};
   const tip = TIPS.find(t => t.view === view && !seen[t.id] && (() => { try { return t.when(); } catch (e) { return false; } })());
   if (!tip) return "";
@@ -119,15 +120,55 @@ ACTIONS["demo-exit"] = () => {
   location.replace(location.pathname + location.search);
 };
 
+// 示範導覽：每一頁最上方一張說明卡，帶朋友走過四個分頁
+const DEMO_STEPS = [
+  { view: "today", title: "旅途中的「今天」",
+    text: "旅行當天打開就是這頁：下一站和導航、回程倒數、天氣，往下滑還有「附近的口袋名單」。試著按「完成」，下一站會自動換。" },
+  { view: "pocket", title: "收藏想去的地方",
+    text: "平常看到想去的店家或景點就收藏，貼 YouTube 影片網址，AI 也會幫你找出地點。點任一個地點的 ⋯，試試「打卡」。" },
+  { view: "plan", title: "規劃每一天",
+    text: "每天的行程、住宿與交通、行李清單、花費都在這裡。點一個行程可以編輯，旅行結束後還能打分數寫心得。" },
+  { view: "tools", title: "更多工具",
+    text: "貼上機票或筆記讓 AI 整理行程、雲端同步讓電腦和手機資料一致、換配色。看完了就開始建立自己的行程吧！" }
+];
+
 function renderDemoBanner() {
   const box = $("#demoBanner");
   if (!box) return;
-  box.innerHTML = DEMO ? `
-  <div class="demo-banner" role="note">
-    <span>👀 <b>示範模式</b>：隨意點點看，這裡的資料不會存進你自己的行程</span>
-    <button class="btn sm" data-action="demo-exit">離開示範</button>
-  </div>` : "";
+  if (!DEMO) { box.innerHTML = ""; return; }
+  const k = DEMO_STEPS.findIndex(st => st.view === currentView);
+  if (prefs.demoTourDone || k < 0) {
+    box.innerHTML = `
+    <div class="demo-banner" role="note">
+      <span>👀 <b>示範模式</b>：隨意點點看，這裡的資料不會存進你自己的行程</span>
+      ${prefs.demoTourDone ? `<button class="btn sm ghost" data-action="demo-tour-restart">重看導覽</button>` : ""}
+      <button class="btn sm" data-action="demo-exit">離開示範</button>
+    </div>`;
+    return;
+  }
+  const st = DEMO_STEPS[k];
+  const next = DEMO_STEPS[k + 1];
+  box.innerHTML = `
+  <section class="demo-tour" aria-live="polite">
+    <div class="demo-tour-head">
+      <span class="demo-tour-step">示範導覽 ${k + 1} / ${DEMO_STEPS.length}</span>
+      <span class="demo-dots">${DEMO_STEPS.map((_, j) => `<i class="${j === k ? "on" : ""}"></i>`).join("")}</span>
+      <button class="link-btn" data-action="demo-exit">離開示範</button>
+      <button class="icon-btn sm" data-action="demo-tour-end" aria-label="關閉導覽">${icon("x")}</button>
+    </div>
+    <h2>${esc(st.title)}</h2>
+    <p>${esc(st.text)}</p>
+    <div class="btn-row">
+      ${next
+        ? `<button class="btn primary" data-action="go" data-view="${next.view}">下一步：${esc(next.title)} →</button>`
+        : `<button class="btn primary" data-action="demo-exit">開始建立我的行程</button>`}
+      ${k > 0 ? `<button class="btn ghost" data-action="go" data-view="${DEMO_STEPS[k - 1].view}">← 上一步</button>` : ""}
+    </div>
+  </section>`;
 }
+
+ACTIONS["demo-tour-end"] = () => { prefs.demoTourDone = 1; savePrefs(); renderDemoBanner(); };
+ACTIONS["demo-tour-restart"] = () => { prefs.demoTourDone = 0; savePrefs(); setView("today"); };
 
 /** 進入示範模式時放入兩個範例行程 */
 function setupDemo() {
@@ -135,6 +176,8 @@ function setupDemo() {
   addDemoTrip("multi");
   const day = addDemoTrip("day");
   selectTrip(day.id);
+  prefs.view = "today";
+  savePrefs();
 }
 
 // ===== 分享給朋友 =====
