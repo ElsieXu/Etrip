@@ -126,10 +126,12 @@ gcloud run deploy etrip-api --source . --region asia-east1 --allow-unauthenticat
 
 ## 之後要更新後端
 
+更完整的維護說明（換 AI 模型、出問題怎麼查、費用）見 [MAINTENANCE.md](MAINTENANCE.md)。
+
 在 Cloud Shell：
 
 ```bash
-cd Etrip && git pull
+cd Etrip && git checkout main && git pull
 ```
 
 ```bash

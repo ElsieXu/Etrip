@@ -91,11 +91,12 @@ vendor/               SortableJS、lz-string、qrcode-generator（放在本地�
 server.py             後端（Flask，部署在 Google Cloud Run）
 Dockerfile            Cloud Run 用
 DEPLOY.md             搬到 Cloud Run 的一步一步說明
+MAINTENANCE.md        後續維護：入口、更新方式、出問題怎麼查、費用
 ```
 
 ## 後端（server.py）
 
-部署方式見 **[DEPLOY.md](DEPLOY.md)**。AI 使用 Google Gemini，雲端同步使用 Firestore。
+部署方式見 **[DEPLOY.md](DEPLOY.md)**，後續維護與費用見 **[MAINTENANCE.md](MAINTENANCE.md)**。AI 使用 Google Gemini，雲端同步使用 Firestore。
 
 | 變數 | 說明 |
 |---|---|
