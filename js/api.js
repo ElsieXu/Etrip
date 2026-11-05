@@ -27,6 +27,7 @@ async function apiRequest(method, path, body, { timeout = 100000, onSlow, okStat
     });
     let data = null;
     try { data = await res.json(); } catch (e) { /* 非 JSON */ }
+    if (data && data.budget) noteAiBudget(data.budget);
     if (okStatuses.includes(res.status)) return { status: res.status, data };
     if (!res.ok) {
       const err = new Error((data && data.error) || `伺服器錯誤（${res.status}）`);
@@ -46,6 +47,34 @@ async function apiRequest(method, path, body, { timeout = 100000, onSlow, okStat
 }
 
 function apiPost(path, body, opts) { return apiRequest("POST", path, body, opts); }
+
+// ===== 每月 AI 額度 =====
+// 後端在每次 AI 回應附上「本月已用幾 %」，到 85% 提醒大家省著用
+
+const AI_BUDGET_WARN = 85;
+
+function aiBudgetMonth() { return new Date(Date.now() - 8 * 3600e3).toISOString().slice(0, 7); }
+
+function noteAiBudget(b) {
+  const pct = Number(b.pct) || 0;
+  prefs.aiBudget = { pct, month: str(b.month) || aiBudgetMonth() };
+  savePrefs();
+  // 每天最多提醒一次（用完時錯誤訊息本身就會說明）
+  if (pct >= AI_BUDGET_WARN && pct < 100 && prefs.aiBudgetToast !== toISODate(new Date())) {
+    prefs.aiBudgetToast = toISODate(new Date());
+    savePrefs();
+    setTimeout(() => toast(`⚠️ 本月 AI 額度已用 ${pct}%，快到上限了。用完後要等下個月 1 號才能再用 AI，其他功能不受影響`, { duration: 8000 }), 600);
+  }
+}
+
+/** AI 功能旁邊的提醒（本月已用 85% 以上才顯示） */
+function aiBudgetNoteHTML() {
+  const b = prefs.aiBudget;
+  if (!b || b.month !== aiBudgetMonth() || b.pct < AI_BUDGET_WARN) return "";
+  return b.pct >= 100
+    ? `<p class="ai-budget-note out">⛔ 這個月的 AI 額度用完了，下個月 1 號會恢復。其他功能都可以正常使用。</p>`
+    : `<p class="ai-budget-note">⚠️ 本月 AI 額度已用 ${b.pct}%，快到上限了，請留給真的需要的時候。</p>`;
+}
 
 /** 提早叫醒伺服器（不等結果），之後真正呼叫時就不用等那麼久 */
 let _lastWake = 0;
@@ -74,6 +103,7 @@ async function aiExtractPlaces(text, opts = {}) {
   const path = isUrl(text) ? "/extract_url" : "/extract_places";
   // 看影片比較久，給 3 分鐘
   const data = await apiPost(path, { text }, { timeout: YOUTUBE_RE.test(text) ? 180000 : 100000, ...opts });
+  const clipped = data?.clipped_minutes || 0;
   let places = data?.places;
   if (typeof places === "string") {
     const parsed = parseAIJson(places);
@@ -81,7 +111,7 @@ async function aiExtractPlaces(text, opts = {}) {
   }
   if (places && !Array.isArray(places) && Array.isArray(places.places)) places = places.places;
   if (!Array.isArray(places)) places = [];
-  return places
+  const out = places
     .map(p => (typeof p === "string" ? { name: p } : p || {}))
     .map(p => ({
       name: str(p.name || p.text),
@@ -90,6 +120,8 @@ async function aiExtractPlaces(text, opts = {}) {
       note: str(p.note)
     }))
     .filter(p => p.name);
+  out.clipped = clipped;   // 影片太長只看了前幾分鐘
+  return out;
 }
 
 // ===== 地點補座標 =====

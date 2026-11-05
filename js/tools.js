@@ -13,6 +13,7 @@ function renderTools() {
     <section class="card span-2">
       <div class="card-head"><h2>${icon("sparkles")}AI 整理行程</h2></div>
       <p class="muted small">貼上機票、訂房確認信、或隨手寫的行程筆記，AI 會整理成每天的行程、住宿與交通，存成一個新行程。</p>
+      ${aiBudgetNoteHTML()}
       <textarea id="rawInput" rows="6" placeholder="例：&#10;11/20 CI120 08:30 桃園→那霸&#10;住 Hotel Collective（國際通）&#10;Day1 首里城、國際通晚餐&#10;Day2 美麗海水族館、古宇利島…"></textarea>
       <button class="btn primary block" data-action="parse-run">${icon("sparkles")}開始整理</button>
     </section>
@@ -149,7 +150,7 @@ function showParsePreview(parsed) {
           ${parsed.meta.startDate ? `<li>${icon("calendar")}${formatDateLabel(parsed.meta.startDate)} 出發</li>` : ""}
           <li>${icon("calendar")}${parsed.days.length} 天、${itemCount} 個行程</li>
           ${parsed.hotels.length ? `<li>${icon("bed")}${parsed.hotels.map(h => esc(h.name)).join("、")}</li>` : ""}
-          ${parsed.flight.depart ? `<li>${icon("plane")}${esc(parsed.flight.depart)}</li>` : ""}
+          ${parsed.flight.depart ? `<li>${icon(transportIcon(parsed.flight.depart, parsed))}${esc(parsed.flight.depart)}</li>` : ""}
         </ul>
         ${parsed.days.slice(0, 3).map(d => `<p class="small"><b>${esc(d.title)}</b>：${d.items.map(i => esc(i.text)).join("、") || "—"}</p>`).join("")}
         ${parsed.days.length > 3 ? `<p class="muted small">…還有 ${parsed.days.length - 3} 天</p>` : ""}

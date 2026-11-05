@@ -46,6 +46,10 @@ const ICONS = {
   phoneDevice: '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/>',
   external: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/>',
   undo: '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/>',
+  train: '<path d="M8 3.1V7a4 4 0 0 0 8 0V3.1"/><path d="M9 15l-1-1M15 15l1-1"/><path d="M9 19c-2.8 0-5-2.2-5-5v-4a8 8 0 0 1 16 0v4c0 2.8-2.2 5-5 5Z"/><path d="M8 19l-2 3M16 19l2 3"/>',
+  bus: '<path d="M8 6v6M15 6v6M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><path d="M9 18h5"/><circle cx="16" cy="18" r="2"/>',
+  car: '<path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/>',
+  ship: '<path d="M2 21c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1 .6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M19.38 20A11.6 11.6 0 0 0 21 14l-9-4-9 4c0 2.9.94 5.34 2.81 7.76"/><path d="M19 13V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6M12 10v4M12 2v3"/>',
   plane: '<path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>',
   radar: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/><path d="M12 12l6.5-6.5"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'
@@ -192,7 +196,7 @@ function emptyStateHTML() {
   if (!others && !library.backups.length && !prefs.welcomeSeen && !DEMO) return welcomeHTML();
   return `
   <div class="empty-state">
-    <div class="empty-art">${icon("plane")}</div>
+    <div class="empty-art">${icon("suitcase")}</div>
     <h2>${others ? "建立新的行程" : "開始規劃你的旅程"}</h2>
     <p>把機票、訂房信、或隨手記的行程貼上來，AI 會幫你整理成每天的行程。也可以先收藏想去的地方，之後再排。</p>
     <div class="empty-actions">
@@ -205,6 +209,21 @@ function emptyStateHTML() {
     </div>
     <p class="empty-foot">電腦上已經整理好了？到「工具 → 雲端同步」輸入同一組同步碼，就能帶著走。</p>
   </div>`;
+}
+
+/**
+ * 依交通方式選圖示：寫了高鐵、台鐵、巴士、開車…就用對應的圖示，
+ * 認不出來時：一日遊、國內用路線圖示，國外才用飛機
+ */
+function transportIcon(text, t = tripData) {
+  const s = str(text);
+  if (/航班|班機|機場|飛機|航空|✈|flight|airport/i.test(s)) return "plane";
+  if (/高鐵|台鐵|火車|自強|莒光|區間|普悠瑪|太魯閣號|捷運|地鐵|電車|列車|新幹線|JR|MRT|KTX|鐵道|車次|輕軌|train|metro|subway|rail/i.test(s)) return "train";
+  if (/客運|巴士|公車|國光|統聯|和欣|接駁|bus/i.test(s)) return "bus";
+  if (/渡輪|郵輪|船|碼頭|ferry/i.test(s)) return "ship";
+  if (/開車|自駕|租車|騎車|機車|計程車|包車|Uber|taxi|car/i.test(s)) return "car";
+  if (/\b(?:[A-Z]{2}|[A-Z]\d|\d[A-Z])\s?\d{2,4}\b/.test(s)) return "plane";   // 航班編號，例如 CI120、7C1234
+  return (t.days || []).length === 1 || !isAbroad(t) ? "route" : "plane";
 }
 
 /** 行程資訊卡：交通、住宿、重要資訊（compact = 今天頁的精簡版） */
@@ -249,7 +268,7 @@ function infoCardHTML({ compact = false } = {}) {
     ${empty ? `<p class="muted">${dayTrip
       ? "還沒有交通資訊。填上回程時間（例如末班車），當天會幫你倒數。"
       : "還沒有交通、住宿或訂位資訊。旅途中最常需要翻找的資料，建議先放在這裡。"}</p>` : ""}
-    ${legHTML ? `<div class="info-group">${icon("plane", "info-icon")}<div class="info-rows">${legHTML}</div></div>` : ""}
+    ${legHTML ? `<div class="info-group">${icon(transportIcon(f.depart || f.return), "info-icon")}<div class="info-rows">${legHTML}</div></div>` : ""}
     ${hotelHTML ? `<div class="info-group">${icon("bed", "info-icon")}<div class="info-rows">${hotelHTML}</div></div>` : ""}
     ${memo ? `<div class="info-group">${icon("info", "info-icon")}<div class="info-rows">${memo}</div></div>` : ""}
     ${dayTrip && !tripData.hotels.length ? "" : `<div class="card-foot">
