@@ -1090,3 +1090,6 @@ a.list-btn { text-decoration: none; }
 .fab { transition: opacity .2s, transform .2s; }
 .fab.fab-hidden { opacity: 0; transform: translateY(16px); pointer-events: none; }
 .demo-tour-head .link-btn { font-size: 13px; text-decoration: none; }
+
+/* 貼上網址時，「收藏」按鈕變成「抓地點」 */
+.quick-add .btn.is-link { background: var(--accent); border-color: var(--accent); }
