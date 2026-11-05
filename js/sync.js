@@ -5,7 +5,7 @@
 // 兩台裝置都改過時，以「每個行程 / 每個口袋地點」為單位，保留較新的那一份。
 // =========================================
 
-const SYNC_KEY = "etrip_sync";
+const SYNC_KEY = (window.ETRIP_DEMO ? "demo:" : "") + "etrip_sync";
 
 const syncState = (() => {
   const d = { code: "", version: 0, pending: false, lastSyncAt: 0, error: "" };
@@ -19,7 +19,7 @@ function saveSyncState() {
   try { localStorage.setItem(SYNC_KEY, JSON.stringify(syncState)); } catch (e) { /* ignore */ }
 }
 
-function syncEnabled() { return !!syncState.code; }
+function syncEnabled() { return !DEMO && !!syncState.code; }
 
 /** 上傳用的資料：目前打開哪個行程是每台裝置自己的，不同步 */
 function libraryForSync(lib = library) {

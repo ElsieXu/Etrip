@@ -59,6 +59,7 @@ function renderHeader() {
 
   // 工具分頁：雲端同步有修改還沒上傳時顯示小點
   updateSyncIndicators();
+  renderDemoBanner();
   renderSafetyBanner();
   // 口袋分頁顯示數量
   $$('[data-nav="pocket"] .nav-count').forEach(c => { c.textContent = tripData.backups.length || ""; });
@@ -87,6 +88,7 @@ function initialView() {
 
 function init() {
   applyAppearance();
+  setupDemo();
   // 正在旅途中的行程優先打開
   if (tripPhase() !== "during") {
     const during = library.trips.find(t => tripPhaseOf(t) === "during");
@@ -99,6 +101,8 @@ function init() {
   checkIncomingLink();
   // 網站已經開著時點同步連結，只會改變 #hash，不會重新載入
   window.addEventListener("hashchange", checkIncomingLink);
+  // 網站開著時點示範連結（#demo）：重新載入才會切換到示範模式
+  window.addEventListener("hashchange", () => { if (location.hash === "#demo") location.reload(); });
   initSync();
 
   // 每分鐘更新倒數；切回網站時如果換日了就重畫

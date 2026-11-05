@@ -189,6 +189,7 @@ function setBusy(btn, busy, text) {
 
 function emptyStateHTML() {
   const others = library.trips.filter(t => t !== tripData).length;
+  if (!others && !library.backups.length && !prefs.welcomeSeen && !DEMO) return welcomeHTML();
   return `
   <div class="empty-state">
     <div class="empty-art">${icon("plane")}</div>
@@ -200,7 +201,7 @@ function emptyStateHTML() {
       <button class="btn" data-action="trip-new-blank">${icon("calendar")}手動建立多日行程</button>
       ${others ? `<button class="btn ghost" data-action="trip-list">${icon("calendar")}切換到其他行程（${others} 個）</button>` : ""}
       <button class="btn ghost" data-action="go" data-view="pocket">${icon("bookmark")}先收藏口袋名單</button>
-      ${others ? "" : `<button class="btn ghost" data-action="demo-pick">${icon("sparkles")}先看看範例行程</button>`}
+      ${others ? "" : `<button class="btn ghost" data-action="demo-enter">${icon("sparkles")}先看看範例（示範模式）</button>`}
     </div>
     <p class="empty-foot">電腦上已經整理好了？到「工具 → 雲端同步」輸入同一組同步碼，就能帶著走。</p>
   </div>`;

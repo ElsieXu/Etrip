@@ -80,6 +80,8 @@ function renderPocket() {
     </details>
   </section>
 
+  ${tipHTML("pocket")}
+
   ${tripData.backups.length ? `
   <div class="filter-bar">
     <div class="filter-top">

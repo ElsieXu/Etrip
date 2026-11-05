@@ -7,10 +7,17 @@
 // tripData.backups 會直接指向 library.backups，所以各頁面不用管是哪一層。
 // =========================================
 
-const LIB_KEY = "etrip_library";        // v3：多行程
-const LEGACY_KEY = "tripData";          // v1 / v2：單一行程（啟動時自動轉換）
-const PREV_KEY = "etrip_library_prev";  // 匯入或清除之前的備份，可復原一次
-const PREFS_KEY = "etrip_prefs";        // 介面偏好（目前分頁、展開狀態、篩選條件）
+// 示範模式（網址 #demo）：所有資料存在 demo: 開頭的位置，和自己的行程分開
+const DEMO = !!window.ETRIP_DEMO;
+const NS = DEMO ? "demo:" : "";
+const LIB_KEY = NS + "etrip_library";        // v3：多行程
+const LEGACY_KEY = NS + "tripData";          // v1 / v2：單一行程（啟動時自動轉換）
+const PREV_KEY = NS + "etrip_library_prev";  // 匯入或清除之前的備份，可復原一次
+const PREFS_KEY = NS + "etrip_prefs";        // 介面偏好（目前分頁、展開狀態、篩選條件）
+if (DEMO && window.ETRIP_DEMO_FRESH) {
+  // 每次從示範連結進來都是全新的範例
+  try { Object.keys(localStorage).filter(k => k.startsWith("demo:")).forEach(k => localStorage.removeItem(k)); } catch (e) { /* ignore */ }
+}
 const SCHEMA_VERSION = 3;
 
 const CATEGORIES = {
@@ -503,7 +510,12 @@ const prefs = (() => {
     pocket: { cat: "all", area: "all", must: false, rainy: false, hideVisited: false, sort: "new", layout: "list" }
   };
   try {
-    const p = JSON.parse(localStorage.getItem(PREFS_KEY) || "{}");
+    let p = JSON.parse(localStorage.getItem(PREFS_KEY) || "{}");
+    if (DEMO && !localStorage.getItem(PREFS_KEY)) {
+      // 示範模式沿用自己的外觀設定
+      const mine = JSON.parse(localStorage.getItem("etrip_prefs") || "{}");
+      p = { theme: mine.theme, accent: mine.accent, apiBase: mine.apiBase, view: "today" };
+    }
     return { ...defaults, ...p, pocket: { ...defaults.pocket, ...(p.pocket || {}) } };
   } catch (e) {
     return defaults;

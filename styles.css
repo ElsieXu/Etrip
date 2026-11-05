@@ -1041,3 +1041,31 @@ a.list-btn { text-decoration: none; }
 
 /* 提示訊息的按鈕夠大 */
 .toast button { min-height: 40px; padding: 0 8px; }
+
+/* ===== 導覽 ===== */
+.tip-card {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; margin-bottom: 14px; border-radius: 14px;
+  background: var(--primary-soft); color: var(--text);
+}
+.tip-card p { flex: 1 1 200px; font-size: 14px; }
+.tip-icon { font-size: 18px; }
+.tip-card .btn { margin-left: auto; }
+@media (max-width: 1023px) { .today-layout .tip-card { order: 5; } }
+
+.welcome .guide-list { text-align: left; margin: 18px auto 0; max-width: 360px; }
+.guide-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.guide-list li { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); }
+.guide-list .i { color: var(--primary); width: 22px; height: 22px; margin-top: 2px; }
+.guide-list div { display: flex; flex-direction: column; }
+.guide-list b { font-size: 15px; }
+.guide-list span { font-size: 13px; color: var(--muted); }
+.guide-tips { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: var(--text-2); }
+
+.demo-banner {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 14px; margin-bottom: 14px; border-radius: 14px;
+  background: var(--accent-soft); color: var(--text); font-size: 14px;
+}
+.demo-banner span { flex: 1 1 220px; }
+.selectable { user-select: all; word-break: break-all; }

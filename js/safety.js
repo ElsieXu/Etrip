@@ -16,7 +16,7 @@ function hasWorthKeeping() {
 }
 
 function safetyRisk() {
-  if (syncEnabled() || !hasWorthKeeping()) return null;
+  if (DEMO || syncEnabled() || !hasWorthKeeping()) return null;
   if (prefs.safetyLater && Date.now() - prefs.safetyLater < 7 * 86400000) return null;
   return isIOS && !isStandalone() ? "ios" : "local";
 }

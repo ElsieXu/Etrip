@@ -123,6 +123,7 @@ function renderToday() {
     </div>
 
     <div class="today-side">
+      ${tipHTML("today")}
       ${todayExpenseHTML(i)}
       ${currencyCardHTML()}
       ${nearbyCardHTML(day, next)}

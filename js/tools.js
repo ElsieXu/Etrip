@@ -19,7 +19,7 @@ function renderTools() {
 
     <section class="card">
       <div class="card-head"><h2>${icon("refresh")}雲端同步</h2></div>
-      ${syncEnabled() ? `
+      ${DEMO ? `<p class="muted small">示範模式不能使用雲端同步。離開示範後，就能在自己的 Etrip 開啟。</p>` : syncEnabled() ? `
         <p class="muted small">電腦和手機輸入同一組同步碼，修改後會自動同步，所有行程、口袋名單和旅行記錄都會帶著走。</p>
         <p id="syncStatus" class="sync-status"></p>
         <div class="code-box">
@@ -43,6 +43,8 @@ function renderTools() {
     </section>
 
     ${appearanceCardHTML()}
+
+    ${guideCardHTML()}
 
     <section class="card">
       <div class="card-head"><h2>${icon("download")}備份與匯出</h2></div>
