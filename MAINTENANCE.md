@@ -12,7 +12,9 @@
 | **網站（前端）** | 畫面、功能 | GitHub：<https://github.com/ElsieXu/Etrip>。合併到 `main` 後，GitHub Pages 會自動更新 <https://elsiexu.github.io/Etrip/>，約 1 分鐘生效 |
 | **後端** | AI 整理行程、抓地點、雲端同步 | [Google Cloud 主控台](https://console.cloud.google.com) → Cloud Run → `etrip-api`（區域 asia-east1） |
 | **雲端同步資料** | 每個同步碼的資料 | Google Cloud 主控台 → Firestore → 資料 |
-| **AI 金鑰** | Gemini 的用量與限制 | <https://aistudio.google.com/apikey> |
+| **AI（Vertex AI）** | 整理行程、抓地點的 AI，費用算在 Google Cloud 帳單，先用 AI Pro 每月送的抵免額 | Google Cloud 主控台 → Vertex AI；花費看「帳單 → 報表」 |
+| **AI Studio 金鑰** | 只在 Vertex AI 讀不了 YouTube 影片時備用 | <https://aistudio.google.com/apikey> |
+| **抵免額** | Google AI Pro 每月送約 US$10，每筆一年後到期 | Google Cloud 主控台 → 帳單 → 抵免額 |
 
 天氣（Open-Meteo）和匯率（ExchangeRate-API）是免費服務，不用金鑰，也不用管理。
 
@@ -59,7 +61,7 @@ gcloud run deploy etrip-api --source . --region asia-east1
 | 每月 | 看一眼「帳單 → 報表」。有設預算提醒（DEPLOY.md 第 9 步）的話，超過會寄信通知，平常不用特地看 |
 | 每 3～6 個月 | 確認 Gemini 模型還沒退役（見下方「換 AI 模型」）。<br>到 [Gemini 模型列表](https://ai.google.dev/gemini-api/docs/models) 看目前用的 `gemini-3.5-flash-lite` 有沒有標示停用日期 |
 | 一次就好 | 設定 Artifact Registry 自動清理舊版（見第 5 點），避免舊的程式映像檔越積越多 |
-| 一次就好 | 費用上限的 ①③④ 和帳單預算提醒（見第 6 點） |
+| 一次就好 | 改用 Vertex AI（見第 6 點）；費用上限的 ①③④ 和帳單預算提醒（見第 7 點） |
 
 ### 4. 換 AI 模型
 
@@ -85,12 +87,54 @@ echo '[{"name":"keep-latest","action":{"type":"Keep"},"mostRecentVersions":{"kee
 gcloud artifacts repositories set-cleanup-policies cloud-run-source-deploy --location=asia-east1 --policy=cleanup.json --no-dry-run
 ```
 
-### 6. 費用上限與防濫用（設一次就好）
+### 6. AI 改用 Vertex AI（用 AI Pro 送的抵免額付費，設一次就好）
 
-目標：**AI 每月最多 US$10**（約 NT$336，含 5% 稅），其他服務都在免費額度內。
-後端網址是公開的，任何人都能直接呼叫，所以分成四層保護：
+Google AI Pro 每個月送約 US$10 的 Google Cloud 抵免額，但 **AI Studio 金鑰的費用不能用抵免額付**。
+後端改用 Vertex AI（同樣是 Gemini 模型）後，AI 費用就會算在 Google Cloud 帳單上，先從抵免額扣。
 
-**① AI Studio 每月花費上限：US$10（最重要，到了就自動停，不會再扣款）**
+在 Cloud Shell 一次貼一段：
+
+```bash
+gcloud services enable aiplatform.googleapis.com
+```
+
+```bash
+PROJECT_ID=$(gcloud config get-value project)
+```
+
+```bash
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
+```
+
+```bash
+gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" --role="roles/aiplatform.user" --condition=None
+```
+
+```bash
+cd ~/Etrip && git checkout main && git pull
+```
+
+```bash
+gcloud run deploy etrip-api --source . --region asia-east1 --max-instances=2 --update-env-vars "AI_PROVIDER=vertex"
+```
+
+部署完打開 `後端網址/health`，看到 `"ai": "vertex"` 就成功了。再到 Etrip 試一次「AI 整理行程」或「抓地點」。
+
+- **YouTube 影片**：Vertex AI 讀不了 YouTube 網址時，會自動改用 AI Studio 金鑰（從 AI Studio 的預付款扣）。所以 `GEMINI_API_KEY` 先不要刪
+- **改回 AI Studio 金鑰**（例如 Vertex 有問題時）：
+
+```bash
+gcloud run services update etrip-api --region asia-east1 --update-env-vars "AI_PROVIDER=gemini"
+```
+
+- 出現「找不到設定的 AI 模型」：Vertex AI 上的模型名稱可能和 AI Studio 不同，到 [Vertex AI 模型列表](https://cloud.google.com/vertex-ai/generative-ai/docs/models) 找 Flash-Lite 的名稱，再用「換 AI 模型」的指令換掉
+
+### 7. 費用上限與防濫用（設一次就好）
+
+目標：**AI 每月最多 US$10**，剛好等於 AI Pro 每月送的抵免額，所以正常情況下 **不用自己付錢**。其他服務都在免費額度內。
+後端網址是公開的，任何人都能直接呼叫，所以分成幾層保護：
+
+**① AI Studio 每月花費上限：US$10（管 YouTube 影片備用的那把金鑰）**
 
 1. 打開 <https://aistudio.google.com>，左下選你的專案
 2. 左邊選單 → **Spend**（花費）
@@ -98,7 +142,7 @@ gcloud artifacts repositories set-cleanup-policies cloud-run-source-deploy --loc
 
 > Google 計算花費會延遲約 10 分鐘，可能稍微超過一點點。這項功能 Google 標示為實驗性質，所以下面還有第二道保險。
 
-**② 程式裡的限制（已內建，不用設定）**
+**② 程式裡的限制（已內建，不用設定；Vertex AI 和 AI Studio 的花費一起算）**
 
 | 類別 | 每個 IP | 每天總量（每台機器） |
 |---|---|---|
@@ -113,7 +157,8 @@ gcloud artifacts repositories set-cleanup-policies cloud-run-source-deploy --loc
 - **每月 AI 預算 US$10**（`MONTHLY_AI_BUDGET_USD`）：後端用每次 AI 回報的用量估算花費，記在 Firestore 的 `etrip_usage`
   - 用到 **85%**：使用 AI 時跳出提醒（每天一次），AI 功能旁邊也會顯示「本月 AI 額度已用 XX%」
   - 用到 **100%**：後端自己先停用 AI，顯示「這個月的 AI 額度用完了，下個月 1 號會恢復」
-  - 這是估算，和 Google 帳單會有一點差距；以 AI Studio 的 Spend 頁面為準
+  - 這是估算，和 Google 帳單會有一點差距。Vertex AI 的實際花費看「帳單 → 報表」，AI Studio 的看 Spend 頁面
+  - **Vertex AI 沒有像 AI Studio 那樣的自動停用上限**，所以這個每月預算就是 Vertex AI 的主要上限
 - 補座標每天 150 次 × 最多 2 台 × 30 天 = 9,000 次，低於 Google Maps 每月 1 萬次免費額度，**永遠 0 元**
 
 要調整時（例如使用者變多）：
@@ -122,7 +167,7 @@ gcloud artifacts repositories set-cleanup-policies cloud-run-source-deploy --loc
 gcloud run services update etrip-api --region asia-east1 --update-env-vars "DAILY_AI_LIMIT=40,MONTHLY_AI_BUDGET_USD=15"
 ```
 
-> 改了 `MONTHLY_AI_BUDGET_USD`，記得 AI Studio 的花費上限也要改成一樣。
+> 抵免額每月約 US$10，預算調超過 10，超過的部分就要自己付。
 
 **③ Cloud Run 最多開 2 台機器**（每天總量最多是上面的 2 倍）
 
@@ -141,7 +186,7 @@ gcloud run services update etrip-api --region asia-east1 --max-instances=2
 
 **再加上：帳單預算提醒**（只寄信、不會停用）：主控台 → 帳單 → 預算與快訊 → 建立預算，金額填 NT$350（或 US$11）。
 
-### 7. 同步碼外流了
+### 8. 同步碼外流了
 
 到 Etrip 的 **工具 → 雲端同步 → 同步碼外流了？**，可以選：
 
@@ -156,9 +201,10 @@ gcloud run services update etrip-api --region asia-east1 --max-instances=2
 |---|---|
 | AI 整理、抓地點都失敗 | 1. 打開 `後端網址/health`，看到 `{"ok": true, ...}` 代表後端有開，`version` 是後端的版本日期<br>2. 到 Cloud Run → `etrip-api` →「記錄」看錯誤訊息<br>3. 錯誤裡有 `model` 或 `not found` → 模型退役了，見「換 AI 模型」<br>4. 錯誤裡有 `quota` 或 `429` → Gemini 用量到上限，到 AI Studio 看 |
 | 出現「使用太頻繁了」 | 防濫用的次數限制，等畫面上寫的時間就好。正常使用很少碰到 |
-| 出現「今天的 AI 使用量已達上限」 | 所有人加起來超過每天的總量。偶爾一次可以不管，常常發生就調高 `DAILY_AI_LIMIT`（見第 6 點） |
-| 出現「本月 AI 額度已用 85%」 | 快到每月預算了，月底前省著用。到 AI Studio 的 Spend 頁看實際花費 |
-| 出現「這個月的 AI 額度用完了」 | 到了每月上限，下個月 1 號自動恢復。想提早恢復就調高預算（見第 6 點） |
+| 出現「今天的 AI 使用量已達上限」 | 所有人加起來超過每天的總量。偶爾一次可以不管，常常發生就調高 `DAILY_AI_LIMIT`（見第 7 點） |
+| 出現「本月 AI 額度已用 85%」 | 快到每月預算了，月底前省著用。實際花費看「帳單 → 報表」 |
+| 出現「伺服器還不能使用 Vertex AI」 | 第 6 點的「開啟 Vertex AI API」和「給權限」兩段還沒做，或還沒生效（等幾分鐘再試） |
+| 出現「這個月的 AI 額度用完了」 | 到了每月上限，下個月 1 號自動恢復。想提早恢復就調高預算（見第 7 點） |
 | 第一次用 AI 要等好幾秒 | 正常。沒人用時後端會休眠，叫醒要幾秒鐘 |
 | 雲端同步失敗 | Firestore 有沒有被刪掉；Cloud Run 記錄裡有沒有 `permission` 錯誤（DEPLOY.md 第 5 步的權限） |
 | 網站沒有更新 | GitHub → Actions，看「pages build and deployment」是不是綠色勾勾；手機上把 Etrip 完全關掉再打開 |
@@ -177,14 +223,16 @@ gcloud run services update etrip-api --region asia-east1 --max-instances=2
 | Firestore | 每天 5 萬次讀取、2 萬次寫入、1 GB 儲存 | 0 |
 | Artifact Registry | 0.5 GB 儲存 | 0～NT$3 |
 | Google Maps 地址查詢 | 每月 1 萬次 | 0 |
-| **Gemini AI** | 專案綁帳單時走付費版 | **約 NT$0～30**（上限 US$10，約 NT$336） |
-| **合計** | | **約 NT$0～30 / 月，最多約 NT$340** |
+| **Gemini AI（Vertex AI）** | AI Pro 每月送約 US$10 抵免額 | **0**（每月用量在 US$10 以內，由抵免額支付） |
+| YouTube 影片備用（AI Studio） | 預付款 | 只在 Vertex 讀不了影片時才會用到 |
+| **合計** | | **正常情況 0 元** |
 
 - Gemini 的大概用量：整理一次行程不到 NT$0.2；看一支 15 分鐘的 YouTube 影片約 NT$1
 - 價格以 2026 年 11 月第三方整理的資料估算（Flash-Lite 每百萬 tokens 約輸入 0.3、輸出 2.5 美元），實際以 [Gemini 定價頁](https://ai.google.dev/gemini-api/docs/pricing) 和帳單報表為準
 - 金鑰是免費版還是付費版，可以在 AI Studio 的金鑰頁看
 - 就算增加到幾十人使用，大部分仍在免費額度內，主要增加的是 Gemini 費用
-- 帳單預算提醒只會寄信；真正會停用的是 AI Studio 的花費上限和程式裡的每月預算（見第 6 點）
+- 帳單預算提醒只會寄信；真正會停用的是程式裡的每月預算和 AI Studio 的花費上限（見第 7 點）
+- 抵免額每筆在發放後一年到期，到期前沒用完就沒了；可以在「帳單 → 抵免額」看剩多少
 
 ---
 

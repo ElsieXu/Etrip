@@ -26,6 +26,12 @@ Etrip 後端（Flask，部署在 Google Cloud Run）
 防濫用：每個 IP 有使用次數限制（見 RATE_RULES），加上每天的總量上限。
 網址是公開的，任何人都能直接呼叫，這些限制讓費用不會失控。
 
+  AI_PROVIDER          選填：vertex（Vertex AI，費用算在 Google Cloud 帳單，可以用抵免額）、
+                       gemini（AI Studio 金鑰）、openai。沒設定時有 GEMINI_API_KEY 就用 gemini
+  VERTEX_LOCATION      選填，Vertex AI 的區域，預設 global
+  VERTEX_PROJECT       選填，Vertex AI 用哪個專案，預設是 Cloud Run 所在的專案
+  VIDEO_FALLBACK       選填，Vertex 讀不了 YouTube 影片時改用 AI Studio 金鑰（需要 GEMINI_API_KEY），預設 1
+
   （選用）AI_PROVIDER=openai 搭配 OPENAI_API_KEY、OPENAI_MODEL，可以改回 OpenAI
 """
 
@@ -60,14 +66,17 @@ _origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.
 CORS(app, resources={r"/*": {"origins": _origins or "*"}})
 
 GOOGLE_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
-AI_PROVIDER = os.getenv("AI_PROVIDER") or ("gemini" if os.getenv("GEMINI_API_KEY") else "openai")
+AI_PROVIDER = (os.getenv("AI_PROVIDER") or ("gemini" if os.getenv("GEMINI_API_KEY") else "openai")).strip().lower()
+USES_GEMINI = AI_PROVIDER in ("gemini", "vertex")   # 兩種都是 Gemini 模型，計費方式不同
+VERTEX_LOCATION = os.getenv("VERTEX_LOCATION", "global")
+VIDEO_FALLBACK = os.getenv("VIDEO_FALLBACK", "1") not in ("0", "false", "no")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 GEMINI_VIDEO_MODEL = os.getenv("GEMINI_VIDEO_MODEL", GEMINI_MODEL)
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 SYNC_COLLECTION = os.getenv("SYNC_COLLECTION", "etrip_sync")
 
 # 後端版本：每次修改 server.py 時更新，部署後打開 /health 就能確認是不是新版
-APP_VERSION = "2026-11-05"
+APP_VERSION = "2026-11-06"
 
 MAX_TEXT = 15000        # 送給 AI 的文字上限
 MAX_PLACES = 80         # 一次最多補幾個座標
@@ -94,6 +103,7 @@ class AIError(Exception):
 # ===============================
 
 _gemini = None
+_vertex = None
 _openai = None
 
 
@@ -103,6 +113,23 @@ def gemini_client():
         from google import genai
         _gemini = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
     return _gemini
+
+
+def vertex_client():
+    """Vertex AI：用 Cloud Run 本身的權限，不需要金鑰；費用算在 Google Cloud 帳單（可以用抵免額）"""
+    global _vertex
+    if _vertex is None:
+        from google import genai
+        project = os.getenv("VERTEX_PROJECT") or os.getenv("GOOGLE_CLOUD_PROJECT")
+        if not project:
+            import google.auth
+            _, project = google.auth.default()
+        _vertex = genai.Client(vertexai=True, project=project, location=VERTEX_LOCATION)
+    return _vertex
+
+
+def ai_client():
+    return vertex_client() if AI_PROVIDER == "vertex" else gemini_client()
 
 
 def parse_json_text(text):
@@ -147,9 +174,17 @@ def ask_json(prompt, video_url=None, clip=False):
         contents = [types.Part(file_data=types.FileData(file_uri=video_url), video_metadata=meta), prompt]
         config["media_resolution"] = types.MediaResolution.MEDIA_RESOLUTION_LOW
         model = GEMINI_VIDEO_MODEL
-    res = gemini_client().models.generate_content(
-        model=model, contents=contents, config=types.GenerateContentConfig(**config)
-    )
+    cfg = types.GenerateContentConfig(**config)
+    try:
+        res = ai_client().models.generate_content(model=model, contents=contents, config=cfg)
+    except Exception as e:  # noqa: BLE001
+        # Vertex AI 讀不了 YouTube 影片時，影片改用 AI Studio 金鑰
+        if not (video_url and AI_PROVIDER == "vertex" and VIDEO_FALLBACK and os.getenv("GEMINI_API_KEY")):
+            raise
+        if "spend" in str(e).lower() or "RESOURCE_EXHAUSTED" in str(e):
+            raise
+        print("Vertex AI 讀影片失敗，改用 AI Studio 金鑰:", repr(e))
+        res = gemini_client().models.generate_content(model=model, contents=contents, config=cfg)
     add_usage(cost_of(getattr(res, "usage_metadata", None), video=bool(video_url)))
     return parse_json_text(res.text)
 
@@ -302,7 +337,7 @@ def limited(kind, daily=False):
             msg = check_rate(kind)
             if msg:
                 return error(msg, 429)
-            if kind == "ai" and AI_PROVIDER == "gemini" and budget_info()["pct"] >= 100:
+            if kind == "ai" and USES_GEMINI and budget_info()["pct"] >= 100:
                 return jsonify({"error": BUDGET_OUT_MSG, "budget": budget_info()}), 429
             if daily and not use_daily(kind):
                 print(f"今天的 {kind} 總量已達上限 {DAILY_LIMITS[kind]}")
@@ -318,7 +353,7 @@ AI_ENDPOINTS = {"parse_trip", "extract_places", "extract_url"}
 @app.after_request
 def attach_budget(resp):
     """AI 的回應附上本月額度用了幾 %，前端到 85% 會提醒"""
-    if request.endpoint in AI_ENDPOINTS and resp.status_code == 200 and resp.is_json and AI_PROVIDER == "gemini":
+    if request.endpoint in AI_ENDPOINTS and resp.status_code == 200 and resp.is_json and USES_GEMINI:
         data = resp.get_json(silent=True)
         if isinstance(data, dict):
             try:
@@ -334,8 +369,12 @@ def ai_failed(e, where):
     msg = str(e)
     if isinstance(e, AIError):
         return error(msg, 400)
+    if AI_PROVIDER == "vertex" and ("PERMISSION_DENIED" in msg or "403" in msg or "SERVICE_DISABLED" in msg):
+        return error("伺服器還不能使用 Vertex AI：請確認已開啟 Vertex AI API，並給 Cloud Run「Vertex AI 使用者」權限（見 MAINTENANCE.md）", 502)
     if "API key" in msg or "PERMISSION_DENIED" in msg or "401" in msg:
         return error("AI 金鑰設定有問題，請檢查伺服器的 GEMINI_API_KEY", 502)
+    if "NOT_FOUND" in msg and "model" in msg.lower():
+        return error("找不到設定的 AI 模型，可能已經退役，請更新 GEMINI_MODEL（見 MAINTENANCE.md）", 502)
     if "spend" in msg.lower():
         # AI Studio 的每月花費上限到了
         _usage.update(month=billing_month(), usd=max(_usage["usd"], MONTHLY_AI_BUDGET_USD), ts=time.time())
