@@ -8,7 +8,7 @@
 const SYNC_KEY = (window.ETRIP_DEMO ? "demo:" : "") + "etrip_sync";
 
 const syncState = (() => {
-  const d = { code: "", version: 0, pending: false, lastSyncAt: 0, error: "" };
+  const d = { code: "", version: 0, pending: false, lastSyncAt: 0, error: "", gone: false };
   try { return { ...d, ...JSON.parse(localStorage.getItem(SYNC_KEY) || "{}") }; } catch (e) { return d; }
 })();
 let _syncing = false;
@@ -59,6 +59,7 @@ function applyMergedLibrary(merged) {
 /** 同步一次：先下載合併，有需要再上傳。衝突時最多重試 3 次 */
 async function syncNow({ silent = true } = {}) {
   if (!syncEnabled()) return false;
+  if (syncState.gone && silent) return false;   // 同步碼失效：等使用者處理，不要一直自動重試
   if (!navigator.onLine) { updateSyncIndicators(); return false; }
   if ($("#sheet")?.open) {               // 編輯中先不要動資料，稍後再試
     clearTimeout(_pushTimer);
@@ -88,12 +89,15 @@ async function syncNow({ silent = true } = {}) {
     syncState.pending = false;
     syncState.lastSyncAt = Date.now();
     syncState.error = "";
+    syncState.gone = false;
     saveSyncState();
     if (!silent) toast("已同步");
     return true;
   } catch (e) {
-    syncState.error = e.status === 404 ? "找不到這個同步碼，可能已經被刪除" : e.message;
+    if (e.status === 404) syncState.gone = true;   // 連線失敗不代表同步碼又能用了，只有成功同步才清掉
+    syncState.error = syncState.gone ? "這組同步碼已經失效（可能在別台裝置換了新的同步碼）" : e.message;
     saveSyncState();
+    if (syncState.gone && typeof renderTools === "function" && currentView === "tools") renderTools();
     if (!silent) toast(`同步失敗：${syncState.error}`);
     return false;
   } finally {
@@ -120,7 +124,7 @@ async function joinSyncCode(code) {
   // 先確認同步碼存在
   await apiRequest("GET", `/sync/${pretty}`, null, { timeout: 30000 });
   snapshotLibrary();
-  Object.assign(syncState, { code: pretty, version: -1, pending: true, error: "" });
+  Object.assign(syncState, { code: pretty, version: -1, pending: true, error: "", gone: false });
   saveSyncState();
   const ok = await syncNow();
   if (!ok) throw new Error(syncState.error || "同步失敗");
@@ -128,9 +132,39 @@ async function joinSyncCode(code) {
 }
 
 function leaveSync() {
-  Object.assign(syncState, { code: "", version: 0, pending: false, error: "" });
+  Object.assign(syncState, { code: "", version: 0, pending: false, error: "", gone: false });
   saveSyncState();
   updateSyncIndicators();
+}
+
+/** 刪除雲端上的資料（找不到也當作已刪除） */
+async function deleteCloudData(code) {
+  try {
+    await apiRequest("DELETE", `/sync/${encodeURIComponent(code)}`, null, { timeout: 30000 });
+  } catch (e) {
+    if (e.status !== 404) throw e;
+  }
+}
+
+/**
+ * 換一組新的同步碼：先把其他裝置的修改同步下來，用這台的資料建立新同步碼，再刪掉舊的。
+ * 舊的同步碼失效，其他裝置要重新輸入新的。
+ */
+async function renewSyncCode() {
+  const old = syncState.code;
+  if (!syncState.gone) await syncNow();
+  const res = await apiPost("/sync", { data: libraryForSync() }, { timeout: 30000 });
+  Object.assign(syncState, { code: res.code, version: res.version, pending: false, lastSyncAt: Date.now(), error: "", gone: false });
+  saveSyncState();
+  updateSyncIndicators();
+  try { await deleteCloudData(old); return { code: res.code, oldDeleted: true }; }
+  catch (e) { return { code: res.code, oldDeleted: false }; }
+}
+
+/** 刪除雲端資料並停止同步（這台裝置的資料保留） */
+async function deleteSyncAndLeave() {
+  if (!syncState.gone) await deleteCloudData(syncState.code);
+  leaveSync();
 }
 
 function syncStatusText() {

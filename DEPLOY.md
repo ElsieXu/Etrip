@@ -98,7 +98,7 @@ ls Dockerfile DEPLOY.md
 - `你的網站網址`：前端網站的網址開頭，例如 `https://elsiexu.github.io`（只要到網域，不用後面的路徑）
 
 ```bash
-gcloud run deploy etrip-api --source . --region asia-east1 --allow-unauthenticated --set-env-vars "GEMINI_API_KEY=你的Gemini金鑰,GOOGLE_MAPS_API_KEY=你的Maps金鑰,ALLOWED_ORIGINS=你的網站網址"
+gcloud run deploy etrip-api --source . --region asia-east1 --allow-unauthenticated --max-instances=2 --set-env-vars "GEMINI_API_KEY=你的Gemini金鑰,GOOGLE_MAPS_API_KEY=你的Maps金鑰,ALLOWED_ORIGINS=你的網站網址"
 ```
 
 - 第一次會問要不要建立 Artifact Registry 存放區，輸入 `Y`
@@ -151,6 +151,8 @@ gcloud run services update etrip-api --region asia-east1 --update-env-vars "ALLO
 | `GEMINI_MODEL` | 整理行程、抓地點用的模型，預設 `gemini-3.5-flash-lite` |
 | `GEMINI_VIDEO_MODEL` | 看 YouTube 影片用的模型，預設和上面相同。想要更準可以改成較強的 Flash 模型（費用較高） |
 | `AI_PROVIDER` | 設成 `openai` 並加上 `OPENAI_API_KEY`，可以改回 OpenAI（不支援影片） |
+| `DAILY_AI_LIMIT` | 每台機器每天最多幾次 AI 請求，預設 150 |
+| `DAILY_GEO_LIMIT` | 每台機器每天最多查幾次座標，預設 300 |
 
 ## Render 可以關掉了嗎？
 

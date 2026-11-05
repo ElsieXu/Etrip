@@ -5,7 +5,7 @@ Etrip 後端（Flask，部署在 Google Cloud Run）
 - /extract_places     AI 從文字中抽出景點 / 餐廳 / 商店
 - /extract_url        讀取網址抽出地點；YouTube 影片會直接讓 Gemini 看影片
 - /enrich_locations   地點名稱轉座標（Google Geocoding API）
-- /sync               雲端同步（Firestore）：建立同步碼、讀取、儲存
+- /sync               雲端同步（Firestore）：建立同步碼、讀取、儲存、刪除
 - /health             健康檢查 / 提早喚醒
 
 環境變數：
@@ -16,6 +16,11 @@ Etrip 後端（Flask，部署在 Google Cloud Run）
   ALLOWED_ORIGINS      選填，只允許自己的網站呼叫，逗號分隔
                        例如 https://elsiexu.github.io
   SYNC_COLLECTION      選填，Firestore 集合名稱，預設 etrip_sync
+  DAILY_AI_LIMIT       選填，每台機器每天最多幾次 AI 請求，預設 150
+  DAILY_GEO_LIMIT      選填，每台機器每天最多查幾次座標，預設 300
+
+防濫用：每個 IP 有使用次數限制（見 RATE_RULES），加上每天的總量上限。
+網址是公開的，任何人都能直接呼叫，這些限制讓費用不會失控。
 
   （選用）AI_PROVIDER=openai 搭配 OPENAI_API_KEY、OPENAI_MODEL，可以改回 OpenAI
 """
@@ -27,7 +32,11 @@ import os
 import re
 import secrets
 import socket
+import threading
+import time
 import zlib
+from collections import deque
+from functools import wraps
 from datetime import date
 from urllib.parse import parse_qs, urljoin, urlparse
 
@@ -130,6 +139,93 @@ def error(message, status=400):
     return jsonify({"error": message}), status
 
 
+# ===============================
+# 防濫用：使用次數限制
+# 存在記憶體裡，每台機器各自計算（Cloud Run 設定最多 2 台）
+# ===============================
+
+# 每個 IP：(秒數, 次數)
+RATE_RULES = {
+    "ai": [(60, 8), (3600, 40)],      # AI 整理、抓地點
+    "geo": [(60, 15), (3600, 120)],   # 補座標
+    "sync": [(60, 60)],               # 同步讀寫（開著網站時約每分鐘一次）
+    "sync_new": [(3600, 5)],          # 建立新的同步碼
+}
+DAILY_LIMITS = {
+    "ai": int(os.getenv("DAILY_AI_LIMIT", "150")),
+    "geo": int(os.getenv("DAILY_GEO_LIMIT", "300")),
+}
+
+_rate_lock = threading.Lock()
+_hits = {}                 # (類別, IP) → 最近的請求時間
+_daily = {"day": "", "ai": 0, "geo": 0}
+_last_prune = [0.0]
+
+
+def client_ip():
+    # Cloud Run 會把真正的來源 IP 放在 X-Forwarded-For 的最後面（前面的值可能是使用者自己填的）
+    fwd = request.headers.get("X-Forwarded-For", "")
+    ip = fwd.split(",")[-1].strip() if fwd else ""
+    return ip or request.remote_addr or "?"
+
+
+def _wait_text(sec):
+    return f"{int(sec) + 1} 秒" if sec < 60 else f"{int(sec // 60) + 1} 分鐘"
+
+
+def check_rate(kind):
+    """超過限制時回傳錯誤訊息，沒超過就記一次並回傳 None"""
+    rules = RATE_RULES[kind]
+    now = time.time()
+    key = (kind, client_ip())
+    with _rate_lock:
+        if now - _last_prune[0] > 600:      # 定期清掉很久沒來的 IP
+            longest = max(w for r in RATE_RULES.values() for w, _ in r)
+            for k in [k for k, q in _hits.items() if not q or now - q[-1] > longest]:
+                del _hits[k]
+            _last_prune[0] = now
+        q = _hits.setdefault(key, deque())
+        longest = max(w for w, _ in rules)
+        while q and now - q[0] > longest:
+            q.popleft()
+        for window, limit in rules:
+            recent = [t for t in q if now - t <= window]
+            if len(recent) >= limit:
+                wait = window - (now - recent[0])
+                return f"使用太頻繁了，請過 {_wait_text(wait)}再試"
+        q.append(now)
+    return None
+
+
+def use_daily(kind, n=1):
+    """每天的總量上限（所有人加起來）。超過回傳 False"""
+    today = date.today().isoformat()
+    with _rate_lock:
+        if _daily["day"] != today:
+            _daily.update(day=today, ai=0, geo=0)
+        if _daily[kind] + n > DAILY_LIMITS[kind]:
+            return False
+        _daily[kind] += n
+        return True
+
+
+def limited(kind, daily=False):
+    def deco(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            if request.method == "OPTIONS":
+                return fn(*args, **kwargs)
+            msg = check_rate(kind)
+            if msg:
+                return error(msg, 429)
+            if daily and not use_daily(kind):
+                print(f"今天的 {kind} 總量已達上限 {DAILY_LIMITS[kind]}")
+                return error("今天的 AI 使用量已達上限，明天再試，或請網站管理員調整", 429)
+            return fn(*args, **kwargs)
+        return wrapper
+    return deco
+
+
 def ai_failed(e, where):
     print(f"{where} 錯誤:", repr(e))
     msg = str(e)
@@ -152,6 +248,7 @@ def health():
 # ===============================
 
 @app.route("/parse", methods=["POST"])
+@limited("ai", daily=True)
 def parse_trip():
     data = request.get_json(silent=True) or {}
     text = str(data.get("text", ""))[:MAX_TEXT]
@@ -226,6 +323,7 @@ def extract_places_from_text(text, title=""):
 
 
 @app.route("/extract_places", methods=["POST"])
+@limited("ai", daily=True)
 def extract_places():
     data = request.get_json(silent=True) or {}
     text = str(data.get("text", ""))[:MAX_TEXT]
@@ -302,6 +400,7 @@ def fetch_page(url):
 
 
 @app.route("/extract_url", methods=["POST"])
+@limited("ai", daily=True)
 def extract_url():
     data = request.get_json(silent=True) or {}
     url = str(data.get("text", "")).strip()
@@ -372,6 +471,7 @@ def geocode(query):
 
 
 @app.route("/enrich_locations", methods=["POST"])
+@limited("geo")
 def enrich_locations():
     data = request.get_json(silent=True) or {}
     places = data.get("places", [])[:MAX_PLACES]
@@ -390,8 +490,12 @@ def enrich_locations():
             r = None
             # 有地區提示時先加上地區查，查不到再只用名稱查
             if hint and hint not in name:
+                if not use_daily("geo"):
+                    break
                 r = geocode(f"{name} {hint}")
             if not r:
+                if not use_daily("geo"):
+                    break
                 r = geocode(name)
             if r:
                 loc = r["geometry"]["location"]
@@ -453,6 +557,7 @@ def sync_unavailable(e):
 
 
 @app.route("/sync", methods=["POST"])
+@limited("sync_new")
 def sync_create():
     data = (request.get_json(silent=True) or {}).get("data")
     if not isinstance(data, dict):
@@ -475,6 +580,7 @@ def sync_create():
 
 
 @app.route("/sync/<code>", methods=["GET"])
+@limited("sync")
 def sync_get(code):
     c = normalize_code(code)
     if not c:
@@ -490,6 +596,7 @@ def sync_get(code):
 
 
 @app.route("/sync/<code>", methods=["PUT"])
+@limited("sync")
 def sync_put(code):
     c = normalize_code(code)
     if not c:
@@ -525,6 +632,23 @@ def sync_put(code):
         return jsonify(payload)
     except ValueError as e:
         return error(str(e), 413)
+    except Exception as e:  # noqa: BLE001
+        return sync_unavailable(e)
+
+
+@app.route("/sync/<code>", methods=["DELETE"])
+@limited("sync")
+def sync_delete(code):
+    """刪除雲端上的資料（換新同步碼、或不再使用雲端同步時）"""
+    c = normalize_code(code)
+    if not c:
+        return error("同步碼格式不正確", 400)
+    try:
+        ref = doc_ref(c)
+        if not ref.get().exists:
+            return error("找不到這個同步碼", 404)
+        ref.delete()
+        return jsonify({"ok": True})
     except Exception as e:  # noqa: BLE001
         return sync_unavailable(e)
 

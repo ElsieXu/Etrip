@@ -53,7 +53,8 @@ gcloud run deploy etrip-api --source . --region asia-east1
 |---|---|
 | 每月 | 看一眼「帳單 → 報表」。有設預算提醒（DEPLOY.md 第 9 步）的話，超過會寄信通知，平常不用特地看 |
 | 每 3～6 個月 | 確認 Gemini 模型還沒退役（見下方「換 AI 模型」）。<br>到 [Gemini 模型列表](https://ai.google.dev/gemini-api/docs/models) 看目前用的 `gemini-3.5-flash-lite` 有沒有標示停用日期 |
-| 一次就好 | 設定 Artifact Registry 自動清理舊版（見下方），避免舊的程式映像檔越積越多 |
+| 一次就好 | 設定 Artifact Registry 自動清理舊版（見第 5 點），避免舊的程式映像檔越積越多 |
+| 一次就好 | 防濫用設定的 ②③（見第 6 點） |
 
 ### 4. 換 AI 模型
 
@@ -79,6 +80,49 @@ echo '[{"name":"keep-latest","action":{"type":"Keep"},"mostRecentVersions":{"kee
 gcloud artifacts repositories set-cleanup-policies cloud-run-source-deploy --location=asia-east1 --policy=cleanup.json --no-dry-run
 ```
 
+### 6. 防濫用設定（設一次就好）
+
+後端網址是公開的，任何人都能直接呼叫。三層保護讓費用不會失控：
+
+**① 程式裡的限制（已內建，不用設定）**
+
+| 類別 | 每個 IP | 每天總量（每台機器） |
+|---|---|---|
+| AI 整理行程、抓地點 | 每分鐘 8 次、每小時 40 次 | 150 次（`DAILY_AI_LIMIT`） |
+| 補座標 | 每分鐘 15 次、每小時 120 次 | 300 次 Google 查詢（`DAILY_GEO_LIMIT`） |
+| 雲端同步讀寫 | 每分鐘 60 次 | — |
+| 建立新的同步碼 | 每小時 5 次 | — |
+
+使用者多了、常看到「今天的 AI 使用量已達上限」時，可以調高（例如 300）：
+
+```bash
+gcloud run services update etrip-api --region asia-east1 --update-env-vars "DAILY_AI_LIMIT=300"
+```
+
+**② Cloud Run 最多開 2 台機器**（每天總量就最多是上面的 2 倍）
+
+```bash
+gcloud run services update etrip-api --region asia-east1 --max-instances=2
+```
+
+**③ Google 那邊的每日上限（最後一道保險）**
+
+就算程式出問題，Google 也會在達到上限時停止服務，不會繼續計費：
+
+1. 主控台 → **API 和服務** → **已啟用的 API 和服務** → 點 **Generative Language API**
+2. 上方切到 **配額與系統限制**，在篩選框輸入 `per day`
+3. 找到「每天的請求數」（GenerateContent requests per day）那一列 → 右邊 ⋮ → **編輯配額** → 填 `400` → 送出
+4. 同樣到 **Geocoding API** 的配額，把每天的請求數改成 `700`
+
+> 配額的名稱偶爾會改，找不到時把畫面截圖給 Claude 看就好。調低配額不用 Google 審核，會立刻生效。
+
+### 7. 同步碼外流了
+
+到 Etrip 的 **工具 → 雲端同步 → 同步碼外流了？**，可以選：
+
+- **換新同步碼**：舊的立刻失效，資料搬到新的同步碼；其他裝置會看到「這組同步碼已經失效」，輸入新的就好
+- **刪除雲端資料**：雲端上的資料刪除，所有裝置停止同步，每台裝置上的資料都保留
+
 ---
 
 ## 三、出問題時
@@ -86,6 +130,8 @@ gcloud artifacts repositories set-cleanup-policies cloud-run-source-deploy --loc
 | 狀況 | 先檢查 |
 |---|---|
 | AI 整理、抓地點都失敗 | 1. 打開 `後端網址/health`，看到 `{"ok": true, ...}` 代表後端有開<br>2. 到 Cloud Run → `etrip-api` →「記錄」看錯誤訊息<br>3. 錯誤裡有 `model` 或 `not found` → 模型退役了，見「換 AI 模型」<br>4. 錯誤裡有 `quota` 或 `429` → Gemini 用量到上限，到 AI Studio 看 |
+| 出現「使用太頻繁了」 | 防濫用的次數限制，等畫面上寫的時間就好。正常使用很少碰到 |
+| 出現「今天的 AI 使用量已達上限」 | 所有人加起來超過每天的總量。偶爾一次可以不管，常常發生就調高 `DAILY_AI_LIMIT`（見「防濫用設定」） |
 | 第一次用 AI 要等好幾秒 | 正常。沒人用時後端會休眠，叫醒要幾秒鐘 |
 | 雲端同步失敗 | Firestore 有沒有被刪掉；Cloud Run 記錄裡有沒有 `permission` 錯誤（DEPLOY.md 第 5 步的權限） |
 | 網站沒有更新 | GitHub → Actions，看「pages build and deployment」是不是綠色勾勾；手機上把 Etrip 完全關掉再打開 |

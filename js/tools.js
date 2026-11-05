@@ -27,11 +27,22 @@ function renderTools() {
           <b id="syncCode" class="sync-code">${esc(syncState.code.slice(0, 4))}-••••-••••</b>
           <button class="btn sm ghost" data-action="sync-reveal">顯示</button>
         </div>
-        <div class="btn-row">
+        ${syncState.gone ? "" : `<div class="btn-row">
           <button class="btn primary" data-action="sync-now">${icon("refresh")}立即同步</button>
           <button class="btn" data-action="sync-add-device">${icon("qr")}加入另一台裝置</button>
+        </div>`}
+        ${syncState.gone ? `
+        <div class="sync-gone">
+          <p>這組同步碼已經失效。如果你在別台裝置換了新的同步碼，請輸入新的；或是用這台裝置的資料重新開啟同步。</p>
+          <div class="btn-row">
+            <button class="btn primary" data-action="sync-rejoin">輸入新的同步碼</button>
+            <button class="btn" data-action="sync-renew">用這台的資料重新開啟</button>
+          </div>
+        </div>` : ""}
+        <div class="btn-row">
+          <button class="btn sm ghost" data-action="sync-leave">在這台裝置停止同步</button>
+          ${syncState.gone ? "" : `<button class="btn sm ghost" data-action="sync-security">同步碼外流了？</button>`}
         </div>
-        <button class="btn sm ghost" data-action="sync-leave">在這台裝置停止同步</button>
         <p class="field-hint">同步碼就像密碼，知道的人都能看到你的行程，請不要公開分享。</p>
       ` : `
         <p class="muted small">在電腦整理好，手機打開就是最新的；之前的旅行記錄也都在。不需要註冊帳號，只要一組同步碼。</p>
@@ -238,6 +249,71 @@ ACTIONS["sync-now"] = async el => {
   setBusy(el, false);
   updateSyncIndicators();
 };
+ACTIONS["sync-security"] = () => {
+  openSheet({
+    title: "換新同步碼或刪除雲端資料",
+    body: `
+      <p>擔心同步碼被別人知道（例如截圖傳出去了），可以選一個：</p>
+      <ul class="sheet-list">
+        <li><b>換一組新的同步碼</b>：舊的同步碼立刻失效，資料搬到新的同步碼。你的其他裝置要重新輸入新的同步碼。</li>
+        <li><b>刪除雲端資料</b>：雲端上的資料刪除，所有裝置停止同步。每台裝置上的資料都會保留。</li>
+      </ul>
+      <p class="muted small">兩種做法都會先把其他裝置的最新修改同步到這台，不會遺失資料。</p>`,
+    actions: [
+      { label: "取消", value: "cancel", variant: "ghost" },
+      { label: "刪除雲端資料", value: "delete", variant: "danger" },
+      { label: "換新同步碼", value: "renew", variant: "primary" }
+    ],
+    onAction(v) {
+      if (v === "renew") { setTimeout(() => ACTIONS["sync-renew"](), 50); return; }
+      if (v === "delete") { setTimeout(confirmDeleteCloud, 50); return; }
+    }
+  });
+};
+
+ACTIONS["sync-renew"] = async el => {
+  if (el) setBusy(el, true, "處理中…");
+  toast("正在建立新的同步碼…");
+  try {
+    const r = await renewSyncCode();
+    renderTools();
+    showSyncCodeSheet("已換成新的同步碼");
+    if (!r.oldDeleted) toast("新的同步碼已建立，但舊的資料沒刪掉，稍後可以再試一次");
+  } catch (e) {
+    if (el) setBusy(el, false);
+    toast(`換新同步碼失敗：${e.message}`);
+  }
+};
+
+ACTIONS["sync-rejoin"] = () => {
+  leaveSync();
+  renderTools();
+  openJoinSheet();
+};
+
+function confirmDeleteCloud() {
+  openSheet({
+    title: "刪除雲端資料？",
+    body: `<p>雲端上的行程、口袋名單和旅行記錄會被刪除，所有裝置都會停止同步。</p>
+      <p>每台裝置上的資料都會保留；之後想再同步，重新按「開啟雲端同步」就可以。</p>`,
+    actions: [{ label: "取消", value: "cancel", variant: "ghost" }, { label: "刪除雲端資料", value: "delete", variant: "danger" }],
+    onAction(v) {
+      if (v !== "delete") return;
+      toast("刪除中…");
+      (async () => {
+        try {
+          if (!syncState.gone) await syncNow();
+          await deleteSyncAndLeave();
+          renderTools();
+          toast("已刪除雲端資料，這台裝置的資料都還在");
+        } catch (e) {
+          toast(`刪除失敗：${e.message}`);
+        }
+      })();
+    }
+  });
+}
+
 ACTIONS["sync-leave"] = () => {
   openSheet({
     title: "在這台裝置停止同步？",
