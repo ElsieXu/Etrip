@@ -5,6 +5,7 @@
 let todaySel = null;          // 目前查看第幾天
 let nearCat = "all";          // 附近口袋名單的分類篩選
 let nearRainy = false;        // 只看雨天備案
+let todayShowAll = false;     // 時間軸是否展開全部
 
 function renderToday() {
   const el = $("#view-today");
@@ -44,12 +45,20 @@ function renderToday() {
   const ret = i === ti ? returnToday() : null;
   const retHTML = ret ? `<p class="return-chip">${icon("clock")}回程 ${esc(ret.time)} · ${esc(ret.countdown || "時間到了，準備出發")}</p>` : "";
 
-  // 時間軸：接下來第一個超過 2 小時的空檔，提示可以看看附近的口袋名單（只顯示一個，避免太雜）
-  const rows = [];
+  // 時間軸：預設只顯示接下來 3 站，已完成和更後面的收起來（「看全部」展開）
   const nextIdx = next ? day.items.indexOf(next) : day.items.length;
+  const collapse = !todayShowAll && next && day.items.length > 4;
+  const from = collapse ? nextIdx : 0;
+  const to = collapse ? Math.min(day.items.length, nextIdx + 3) : day.items.length;
+  const rows = [];
+  if (collapse && from > 0) {
+    rows.push(`<li class="tl-more"><button data-action="today-all">${icon("check")}已完成 ${from} 個，展開全部</button></li>`);
+  }
+  // 接下來第一個超過 2 小時的空檔，提示可以看看附近的口袋名單（只顯示一個）
   let gapShown = false;
   day.items.forEach((it, k) => {
-    if (!gapShown && k > 0 && k - 1 >= nextIdx) {
+    if (k < from || k >= to) return;
+    if (!gapShown && k > from && k - 1 >= nextIdx) {
       const a = timeToMin(day.items[k - 1].time), b = timeToMin(it.time);
       if (a != null && b != null && b - a >= 120) {
         gapShown = true;
@@ -67,6 +76,11 @@ function renderToday() {
             <a class="icon-btn" href="${esc(mapsNavUrl(it))}" target="_blank" rel="noopener" aria-label="導航到 ${esc(it.text)}">${icon("nav")}</a>
           </li>`);
   });
+  if (collapse && to < day.items.length) {
+    rows.push(`<li class="tl-more"><button data-action="today-all">${icon("chevron")}之後還有 ${day.items.length - to} 個，展開全部</button></li>`);
+  } else if (todayShowAll && day.items.length > 4 && next) {
+    rows.push(`<li class="tl-more"><button data-action="today-all">${icon("chevron", "rot180")}只看接下來的行程</button></li>`);
+  }
 
   el.innerHTML = `
   <div class="today-layout">
@@ -94,7 +108,7 @@ function renderToday() {
           <button class="btn" data-action="item-add" data-day="${i}">${icon("plus")}新增行程</button>`}
       </section>
 
-      <section class="card">
+      <section class="card timeline-card">
         <div class="card-head">
           <h2>${icon("calendar")}${esc(day.title)}<span class="muted small">${doneCount}/${day.items.length}</span></h2>
           <div class="row-gap">
@@ -114,7 +128,8 @@ function renderToday() {
       ${nearbyCardHTML(day, next)}
       ${infoCardHTML({ compact: true })}
     </div>
-  </div>`;
+  </div>
+  <button class="fab" data-action="exp-add" data-day="${i}" aria-label="記一筆花費">${icon("plus")}記帳</button>`;
 }
 
 /** 附近的口袋名單：有定位就用目前位置，沒有就用下一站 / 當天最後一站 */
@@ -154,7 +169,7 @@ function nearbyCardHTML(day, next) {
         <span class="poi-icon sm">${CATEGORIES[b.category].icon}</span>
         <div class="near-main">
           <span class="near-name">${esc(b.name)}${b.priority === "must" ? `<span class="must" title="必去">${icon("star")}</span>` : ""}</span>
-          <span class="near-meta">${d != null ? formatKm(d) : "沒有座標"}${b.area ? ` · ${esc(b.area)}` : ""}${b.note ? ` · ${esc(b.note)}` : ""}</span>
+          <span class="near-meta">${d != null ? formatKm(d) + walkText(d) : "沒有座標"}${b.area ? ` · ${esc(b.area)}` : ""}${b.note ? ` · ${esc(b.note)}` : ""}</span>
         </div>
         <a class="icon-btn" href="${esc(mapsNavUrl(b))}" target="_blank" rel="noopener" aria-label="導航到 ${esc(b.name)}">${icon("nav")}</a>
         <button class="icon-btn" data-action="backup-to-day" data-id="${b.id}" data-day="${todaySel}" aria-label="加入這天">${icon("plus")}</button>
@@ -164,7 +179,8 @@ function nearbyCardHTML(day, next) {
   </section>`;
 }
 
-ACTIONS["today-pick"] = el => { todaySel = +el.dataset.i; renderToday(); };
+ACTIONS["today-pick"] = el => { todaySel = +el.dataset.i; todayShowAll = false; renderToday(); };
+ACTIONS["today-all"] = () => { todayShowAll = !todayShowAll; renderToday(); };
 ACTIONS["near-cat"] = el => { nearCat = el.dataset.v; renderToday(); };
 ACTIONS["near-rainy"] = () => { nearRainy = !nearRainy; renderToday(); };
 

@@ -500,7 +500,7 @@ function mergeLibraries(local, remote) {
 const prefs = (() => {
   const defaults = {
     view: "", expanded: {}, apiBase: "", theme: "auto", accent: "sky",
-    pocket: { cat: "all", area: "all", must: false, rainy: false, hideVisited: false, sort: "new" }
+    pocket: { cat: "all", area: "all", must: false, rainy: false, hideVisited: false, sort: "new", layout: "list" }
   };
   try {
     const p = JSON.parse(localStorage.getItem(PREFS_KEY) || "{}");

@@ -3,7 +3,7 @@
 // 更新網站檔案後，記得把 CACHE 的版本號 +1
 // =========================================
 
-const CACHE = "etrip-v8";
+const CACHE = "etrip-v9";
 const ASSETS = [
   "./",
   "index.html",
@@ -30,6 +30,7 @@ const ASSETS = [
   "js/demo.js",
   "js/trips.js",
   "js/sync.js",
+  "js/safety.js",
   "js/app.js"
 ];
 

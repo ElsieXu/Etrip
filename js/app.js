@@ -59,6 +59,7 @@ function renderHeader() {
 
   // 工具分頁：雲端同步有修改還沒上傳時顯示小點
   updateSyncIndicators();
+  renderSafetyBanner();
   // 口袋分頁顯示數量
   $$('[data-nav="pocket"] .nav-count').forEach(c => { c.textContent = tripData.backups.length || ""; });
 }
