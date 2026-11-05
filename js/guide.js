@@ -6,9 +6,9 @@
 // ===== 情境小提示 =====
 const TIPS = [
   { id: "pocket-radar", view: "pocket", when: () => true,
-    text: "看到心動的旅遊影片？點「從 YouTube 影片或文章抓地點」貼上網址，AI 會幫你找出店家和景點。" },
+    text: "看到心動的旅遊影片？把 YouTube 或文章網址直接貼進上面的框框，按「抓地點」，AI 會幫你找出店家和景點。" },
   { id: "pocket-menu", view: "pocket", when: () => library.backups.length > 0,
-    text: "點地點右邊的 ⋯ 可以導航、排進行程；臨時去了就按「打卡」，會記進當天行程，還能評分。" },
+    text: "點地點或右邊的 ⋯ 可以導航、排進行程、刪除；臨時去了就按「打卡」，會記進當天行程，還能評分。" },
   { id: "pocket-area", view: "pocket", when: () => areaCounts().length >= 2,
     text: "收藏多了，用上面的地區按鈕只看某個城市；「這趟附近」只列出這次行程會經過的地方。" },
   { id: "today-nearby", view: "today", when: () => tripPhase() === "during",
@@ -125,7 +125,7 @@ const DEMO_STEPS = [
   { view: "today", title: "旅途中的「今天」",
     text: "旅行當天打開就是這頁：下一站和導航、回程倒數、天氣，往下滑還有「附近的口袋名單」。試著按「完成」，下一站會自動換。" },
   { view: "pocket", title: "收藏想去的地方",
-    text: "平常看到想去的店家或景點就收藏，貼 YouTube 影片網址，AI 也會幫你找出地點。點任一個地點的 ⋯，試試「打卡」。" },
+    text: "平常看到想去的店家或景點就收藏；把 YouTube 影片網址貼進同一個框框，AI 會幫你找出地點。點任一個地點，試試「打卡」。" },
   { view: "plan", title: "規劃每一天",
     text: "每天的行程、住宿與交通、行李清單、花費都在這裡。點一個行程可以編輯，旅行結束後還能打分數寫心得。" },
   { view: "tools", title: "更多工具",

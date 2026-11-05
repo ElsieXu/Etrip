@@ -66,13 +66,13 @@ function renderPocket() {
   $("#view-pocket").innerHTML = `
   <section class="card pocket-add">
     <form class="quick-add" data-form="backup-quick">
-      <input id="quickAdd" name="name" placeholder="收藏一個地方：店名、景點…" autocomplete="off" aria-label="新增口袋名單">
-      <button class="btn primary" type="submit">${icon("plus")}收藏</button>
+      <input id="quickAdd" name="name" placeholder="輸入店名，或貼上影片 / 文章網址" autocomplete="off" aria-label="收藏地點或貼上網址" data-smart-add>
+      <button class="btn primary" type="submit" data-smart-btn>${icon("plus")}收藏</button>
     </form>
     <details class="radar radar-inline" ${tripData.backups.length ? "" : "open"}>
-      <summary>${icon("radar")}<span>從 YouTube 影片或文章抓地點</span>${icon("chevron", "chev")}</summary>
+      <summary>${icon("radar")}<span>貼一大段文字（影片說明、筆記、清單）</span>${icon("chevron", "chev")}</summary>
       <div class="radar-body">
-        <textarea id="radarText" rows="4" placeholder="貼上 YouTube 影片網址、部落格網址，或影片說明文字、筆記、清單…"></textarea>
+        <textarea id="radarText" rows="4" placeholder="貼上影片說明文字、筆記、清單，或 YouTube / 部落格網址…"></textarea>
         <input id="radarSource" placeholder="來源連結（選填）：IG / TikTok 網址">
         <p class="field-hint">▶ YouTube 公開影片：直接貼網址，AI 會看完影片找出介紹的地點（約 30 秒～2 分鐘）。<br>IG、TikTok 的網址讀不到內容：請把影片說明文字貼在上面，網址填在「來源連結」，到現場可以一鍵打開影片。</p>
         <button class="btn primary block" data-action="radar-run">${icon("sparkles")}抓取地點</button>
@@ -137,7 +137,7 @@ function poiCardHTML(b, d) {
         <h3>${esc(b.name)}${b.priority === "must" ? `<span class="must" title="必去">${icon("star")}</span>` : ""}</h3>
         <p class="poi-meta">${meta}</p>
       </div>
-      <button class="icon-btn" data-action="backup-edit" data-id="${b.id}" aria-label="編輯 ${esc(b.name)}">${icon("more")}</button>
+      <button class="icon-btn" data-action="backup-menu" data-id="${b.id}" aria-label="${esc(b.name)} 的選項">${icon("more")}</button>
     </div>
     ${b.note ? `<p class="poi-note">${esc(b.note)}</p>` : ""}
     <div class="poi-tags">
@@ -173,7 +173,7 @@ function pocketAsideHTML() {
         <button class="btn sm ghost" data-action="go" data-view="pocket">管理</button>
       </div>
       <form class="quick-add sm" data-form="backup-quick">
-        <input name="name" placeholder="快速收藏…" autocomplete="off" aria-label="快速收藏">
+        <input name="name" placeholder="店名或網址…" autocomplete="off" aria-label="收藏地點或貼上網址" data-smart-add>
         <button class="icon-btn" type="submit" aria-label="收藏">${icon("plus")}</button>
       </form>
       ${tripHasPlace() ? `<div class="chip-row">
@@ -240,6 +240,12 @@ FORMS["backup-quick"] = form => {
   const input = form.querySelector("input[name=name]");
   const name = str(input.value);
   if (!name) return;
+  // 貼的是網址：不要存成地點，改成從影片或文章抓地點
+  if (looksLikeLink(name)) {
+    input.value = "";
+    updateSmartButton(input);
+    return grabPlacesFromLink(name);
+  }
   if (tripData.backups.some(b => b.name.toLowerCase() === name.toLowerCase())) {
     toast(`「${name}」已經在口袋名單裡了`);
     return;
@@ -253,6 +259,42 @@ FORMS["backup-quick"] = form => {
   // 保持輸入框焦點，方便連續新增
   setTimeout(() => $(`form[data-form="backup-quick"] input`, $(`#view-${currentView}`))?.focus(), 0);
 };
+
+/** 看起來像網址（含沒有 https:// 的 youtu.be/…、www.…） */
+function looksLikeLink(s) {
+  return isUrl(s) || /^(www\.|youtu\.be\/|m\.youtube\.com\/|youtube\.com\/|instagram\.com\/|tiktok\.com\/|vt\.tiktok\.com\/)\S+$/i.test(s);
+}
+function normalizeLink(s) { return isUrl(s) ? s : `https://${s}`; }
+
+/** 從網址抓地點：YouTube / 部落格直接交給 AI；IG、TikTok 讀不到內容，請使用者貼說明文字 */
+function grabPlacesFromLink(raw) {
+  const url = normalizeLink(raw);
+  if (currentView !== "pocket") setView("pocket");
+  const radar = $(".radar-inline");
+  if (radar) radar.open = true;
+  if (SOCIAL_RE.test(url)) {
+    $("#radarSource").value = url;
+    $("#radarText").value = "";
+    $("#radarText").focus();
+    toast("IG、TikTok 的網址讀不到內容：請把影片說明文字貼在下面的框框，再按「抓取地點」", { duration: 6000 });
+    return;
+  }
+  $("#radarText").value = url;
+  $("#radarSource").value = "";
+  ACTIONS["radar-run"]($('[data-action="radar-run"]'));
+}
+
+/** 輸入網址時，按鈕從「收藏」變成「抓地點」，讓人知道會發生什麼事 */
+function updateSmartButton(input) {
+  const btn = input.closest("form")?.querySelector("[data-smart-btn]");
+  if (!btn) return;
+  const link = looksLikeLink(str(input.value));
+  btn.innerHTML = link ? `${icon("sparkles")}抓地點` : `${icon("plus")}收藏`;
+  btn.classList.toggle("is-link", link);
+}
+document.addEventListener("input", e => {
+  if (e.target.matches("[data-smart-add]")) updateSmartButton(e.target);
+});
 
 function openBackupSheet(b) {
   const catOpts = Object.entries(CATEGORIES).map(([k, v]) => ({ value: k, label: `${v.icon} ${v.label}` }));
@@ -465,6 +507,7 @@ ACTIONS["backup-menu"] = el => {
         <button type="submit" name="_action" value="checkin" class="list-btn">${icon("check")}<span><b>打卡：我去過了</b><small>記進今天的行程，順便打分數</small></span></button>
         <button type="submit" name="_action" value="schedule" class="list-btn">${icon("calendar")}<span><b>排入行程</b></span></button>
         <button type="submit" name="_action" value="edit" class="list-btn">${icon("edit")}<span><b>編輯</b><small>分類、地區、必去、筆記…</small></span></button>
+        <button type="submit" name="_action" value="delete" class="list-btn danger">${icon("trash")}<span><b>刪除這個收藏</b><small>刪錯了可以馬上復原</small></span></button>
       </div>`,
     actions: [{ label: "關閉", value: "cancel", variant: "ghost" }],
     onAction(v) {
@@ -472,6 +515,7 @@ ACTIONS["backup-menu"] = el => {
       if (v === "checkin") setTimeout(() => ACTIONS["backup-checkin"](fake), 50);
       if (v === "schedule") setTimeout(() => ACTIONS["backup-schedule"](fake), 50);
       if (v === "edit") setTimeout(() => openBackupSheet(b), 50);
+      if (v === "delete") deleteBackup(b);
     }
   });
 };
@@ -616,3 +660,13 @@ ACTIONS["backup-checkin"] = el => {
     }
   });
 };
+
+function deleteBackup(b) {
+  const idx = library.backups.indexOf(b);
+  if (idx < 0) return;
+  library.backups.splice(idx, 1);
+  saveTrip(); refresh();
+  toast(`已刪除「${b.name.length > 20 ? b.name.slice(0, 20) + "…" : b.name}」`, {
+    action: { label: "復原", fn: () => { library.backups.splice(idx, 0, b); delete library.deleted[b.id]; saveTrip(); refresh(); } }
+  });
+}
