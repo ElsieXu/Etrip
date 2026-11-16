@@ -180,7 +180,8 @@ function initEvents() {
 function setBusy(btn, busy, text) {
   if (!btn) return;
   if (busy) {
-    btn.dataset.label = btn.innerHTML;
+    // 忙碌中再呼叫一次只是換文字，不要把轉圈圈存成原本的樣子
+    if (!btn.disabled) btn.dataset.label = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = `<span class="spinner"></span>${esc(text || "處理中…")}`;
   } else {

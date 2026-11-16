@@ -74,9 +74,11 @@ function renderPocket() {
       <div class="radar-body">
         <textarea id="radarText" rows="4" placeholder="貼上影片說明文字、筆記、清單，或 YouTube / 部落格網址…"></textarea>
         <input id="radarSource" placeholder="來源連結（選填）：IG / TikTok 網址">
-        <p class="field-hint">▶ YouTube 公開影片：直接貼網址，AI 會看影片找出介紹的地點（最多看前 50 分鐘，約 30 秒～2 分鐘）。<br>IG、TikTok 的網址讀不到內容：請把影片說明文字貼在上面，網址填在「來源連結」，到現場可以一鍵打開影片。</p>
+        <p class="field-hint">▶ YouTube 公開影片：直接貼網址，AI 會看影片找出介紹的地點（最多看前 50 分鐘，約 30 秒～2 分鐘）。<br>▶ IG 公開貼文：直接貼網址，AI 會讀貼文的說明文字。讀不到，或地點只出現在影片裡時，按「上傳影片或截圖」讓 AI 直接看（影片 14MB 以內會連聲音一起聽；更大的影片只看畫面）。<br>TikTok 等其他社群：請把說明文字貼在上面，或上傳影片 / 截圖；網址填在「來源連結」，到現場可以一鍵打開影片。</p>
         ${aiBudgetNoteHTML()}
         <button class="btn primary block" data-action="radar-run">${icon("sparkles")}抓取地點</button>
+        <button class="btn block" data-action="radar-upload">${icon("plus")}上傳影片或截圖</button>
+        <input id="radarMedia" type="file" accept="video/*,image/*" multiple hidden>
       </div>
     </details>
   </section>
@@ -267,17 +269,17 @@ function looksLikeLink(s) {
 }
 function normalizeLink(s) { return isUrl(s) ? s : `https://${s}`; }
 
-/** 從網址抓地點：YouTube / 部落格直接交給 AI；IG、TikTok 讀不到內容，請使用者貼說明文字 */
+/** 從網址抓地點：YouTube / 部落格 / IG 直接交給 AI；TikTok 等讀不到內容，請使用者貼說明文字或上傳影片 */
 function grabPlacesFromLink(raw) {
   const url = normalizeLink(raw);
   if (currentView !== "pocket") setView("pocket");
   const radar = $(".radar-inline");
   if (radar) radar.open = true;
-  if (SOCIAL_RE.test(url)) {
+  if (SOCIAL_RE.test(url) && !IG_RE.test(url)) {
     $("#radarSource").value = url;
     $("#radarText").value = "";
     $("#radarText").focus();
-    toast("IG、TikTok 的網址讀不到內容：請把影片說明文字貼在下面的框框，再按「抓取地點」", { duration: 6000 });
+    toast("TikTok 等社群的網址讀不到內容：請把影片說明文字貼在下面的框框，或按「上傳影片或截圖」", { duration: 6000 });
     return;
   }
   $("#radarText").value = url;
@@ -392,26 +394,76 @@ ACTIONS["radar-run"] = async el => {
     toast(source ? "請在上面的框框貼上影片說明文字或筆記，AI 才有內容可以讀" : "請先貼上網址或文字");
     return;
   }
+  const isIG = isUrl(text) && IG_RE.test(text);
   if (isUrl(text)) {
     if (!source) source = text;
-    if (SOCIAL_RE.test(text)) toast("IG、TikTok 等社群網站通常讀不到內容，若沒有結果，請改貼影片說明文字");
+    if (SOCIAL_RE.test(text) && !isIG) toast("TikTok 等社群網站通常讀不到內容，若沒有結果，請改貼影片說明文字或上傳影片");
   }
   const isVideo = YOUTUBE_RE.test(text);
-  setBusy(el, true, isVideo ? "AI 正在看影片…" : "AI 抓取中…");
+  setBusy(el, true, isVideo ? "AI 正在看影片…" : isIG ? "正在讀 IG 貼文說明…" : "AI 抓取中…");
   try {
     const places = await aiExtractPlaces(text, { onSlow: () => setBusy(el, true, isVideo ? "AI 正在看影片，影片越長越久…" : "伺服器喚醒中，請稍候…") });
     setBusy(el, false);
+    const pickFile = { label: "選擇檔案", fn: () => $("#radarMedia")?.click() };
+    if (isIG) {
+      // 記下說明文字：之後上傳影片時一起給 AI 參考
+      radarCaption = { url: text, text: places.caption };
+      if (!places.length) {
+        $("#radarSource").value = text;
+        $("#radarText").value = "";
+        toast(`${places.caption ? "這則 IG 貼文的說明文字裡沒有寫到地點" : "這則 IG 貼文讀不到內容（可能是私人帳號，或被 IG 擋下來）"}。請上傳影片、螢幕錄影或截圖，AI 會直接看`, { duration: 9000, action: pickFile });
+        return;
+      }
+    }
     if (!places.length) {
-      toast(isVideo ? "影片裡沒有找到明確的地點" : "沒有找到地點。若是社群影片，請改貼影片說明文字");
+      toast(isVideo ? "影片裡沒有找到明確的地點" : "沒有找到地點。若是社群影片，請改貼影片說明文字或上傳影片");
       return;
     }
     showRadarPreview(places, safeUrl(source));
     if (places.clipped) toast(`影片超過 ${places.clipped} 分鐘，AI 只看了前 ${places.clipped} 分鐘`, { duration: 6000 });
+    if (isIG) toast("這些是從貼文說明文字找到的，AI 沒有看影片。影片裡才提到的地點，可以再上傳影片或截圖", { duration: 8000 });
   } catch (e) {
     setBusy(el, false);
     toast(e.message);
   }
 };
+
+// IG 貼文的說明文字（貼網址時讀到的），上傳影片時一起給 AI
+let radarCaption = { url: "", text: "" };
+
+ACTIONS["radar-upload"] = () => $("#radarMedia")?.click();
+
+document.addEventListener("change", e => {
+  if (!e.target.matches("#radarMedia")) return;
+  const files = [...e.target.files];
+  e.target.value = "";   // 同一個檔案可以再選一次
+  if (files.length) radarUpload(files);
+});
+
+/** 上傳影片或截圖，讓 AI 直接看內容找地點 */
+async function radarUpload(files) {
+  const btn = $('[data-action="radar-upload"]');
+  const text = str($("#radarText").value);
+  const source = str($("#radarSource").value) || (isUrl(text) ? text : "");
+  const caption = [isUrl(text) ? "" : text, source && source === radarCaption.url ? radarCaption.text : ""].filter(Boolean).join("\n");
+  setBusy(btn, true, "準備檔案中…");
+  try {
+    const media = await prepareMedia(files);
+    const busyText = media.video ? "AI 正在看影片…" : "AI 正在看圖片…";
+    setBusy(btn, true, busyText);
+    const places = await aiExtractMedia(media.blobs, caption, { onSlow: () => setBusy(btn, true, busyText) });
+    setBusy(btn, false);
+    if (!places.length) {
+      toast("沒有找到明確的地點。可以改上傳看得到店名的截圖，或把說明文字貼在上面的框框");
+      return;
+    }
+    showRadarPreview(places, safeUrl(source));
+    if (media.frames) toast("影片比較大，AI 只看了畫面（大約每 2 秒一張），沒有聽聲音。想讓 AI 聽旁白，請把影片剪到 14MB 以內再上傳", { duration: 9000 });
+  } catch (e) {
+    setBusy(btn, false);
+    toast(e.message);
+  }
+}
 
 function showRadarPreview(places, source) {
   const existing = new Set(tripData.backups.map(b => b.name.toLowerCase()));
