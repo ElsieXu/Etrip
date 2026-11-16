@@ -683,6 +683,7 @@ def extract_media():
     prompt = f"""
 這是一則旅遊相關社群貼文（例如 Instagram）的{what}。
 請從畫面、畫面上的文字、字幕{"和旁白" if has_video else ""}中，找出所有介紹到、可以實際前往的景點、餐廳、咖啡廳或商店。
+{"請仔細聽完整段聲音：旁白或對話裡口頭提到、但畫面上沒有出現文字的地點，也一定要列出來。" if has_video else ""}
 {PLACES_FORMAT}
 {caption_block}
 """
