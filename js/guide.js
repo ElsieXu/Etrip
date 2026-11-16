@@ -6,7 +6,7 @@
 // ===== 情境小提示 =====
 const TIPS = [
   { id: "pocket-radar", view: "pocket", when: () => true,
-    text: "看到心動的旅遊影片？把 YouTube 或文章網址直接貼進上面的框框，按「抓地點」，AI 會幫你找出店家和景點。" },
+    text: "看到心動的旅遊影片？把 YouTube、IG 或文章網址直接貼進上面的框框，按「抓地點」，AI 會幫你找出店家和景點。" },
   { id: "pocket-menu", view: "pocket", when: () => library.backups.length > 0,
     text: "點地點或右邊的 ⋯ 可以導航、排進行程、刪除；臨時去了就按「打卡」，會記進當天行程，還能評分。" },
   { id: "pocket-area", view: "pocket", when: () => areaCounts().length >= 2,

@@ -20,8 +20,9 @@ async function apiRequest(method, path, body, { timeout = 100000, onSlow, okStat
   try {
     const res = await fetch(apiBase() + path, {
       method,
-      headers: body ? { "Content-Type": "application/json" } : {},
-      body: body ? JSON.stringify(body) : undefined,
+      // FormData（上傳檔案）交給瀏覽器自己設定 Content-Type
+      headers: body && !(body instanceof FormData) ? { "Content-Type": "application/json" } : {},
+      body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
       signal: ctrl.signal,
       cache: "no-store"
     });
@@ -99,11 +100,22 @@ async function aiParseTrip(text, opts) {
 const SOCIAL_RE = /instagram\.com|tiktok\.com|xiaohongshu\.com|xhslink\.com|facebook\.com|fb\.watch|threads\.net/i;
 const YOUTUBE_RE = /youtube\.com\/(watch|shorts|live)|youtu\.be\//i;
 
+// IG 貼文：後端會先讀公開的說明文字，讀不到再請使用者上傳影片或截圖
+const IG_RE = /instagram\.com|instagr\.am/i;
+
 async function aiExtractPlaces(text, opts = {}) {
   const path = isUrl(text) ? "/extract_url" : "/extract_places";
   // 看影片比較久，給 3 分鐘
   const data = await apiPost(path, { text }, { timeout: YOUTUBE_RE.test(text) ? 180000 : 100000, ...opts });
-  const clipped = data?.clipped_minutes || 0;
+  const out = normalizePlaces(data);
+  out.clipped = data?.clipped_minutes || 0;   // 影片太長只看了前幾分鐘
+  out.needUpload = !!data?.need_upload;       // IG 讀不到內容：請使用者上傳影片或截圖
+  out.captionOnly = !!data?.caption_only;     // IG 只讀到貼文說明文字，沒有看影片
+  out.caption = str(data?.caption);
+  return out;
+}
+
+function normalizePlaces(data) {
   let places = data?.places;
   if (typeof places === "string") {
     const parsed = parseAIJson(places);
@@ -120,8 +132,98 @@ async function aiExtractPlaces(text, opts = {}) {
       note: str(p.note)
     }))
     .filter(p => p.name);
-  out.clipped = clipped;   // 影片太長只看了前幾分鐘
   return out;
+}
+
+// ===== 上傳影片 / 截圖讓 AI 看（IG、TikTok 等讀不到網址的貼文） =====
+
+const MEDIA_MAX_BYTES = 14 * 1024 * 1024;   // 要和後端的 MEDIA_MAX_MB 一致
+const MEDIA_MAX_SHOTS = 10;                 // 一次最多幾張截圖
+const MEDIA_MAX_FRAMES = 30;                // 影片太大時最多取幾張畫面
+
+/** blobs：一支影片或幾張圖片；caption：貼文說明文字（選填，幫 AI 確認店名） */
+async function aiExtractMedia(blobs, caption = "", opts = {}) {
+  const fd = new FormData();
+  blobs.forEach((b, i) => fd.append("media", b, b.name || `shot-${i + 1}.jpg`));
+  if (caption) fd.append("caption", caption);
+  return normalizePlaces(await apiPost("/extract_media", fd, { timeout: 180000, ...opts }));
+}
+
+/**
+ * 把使用者選的檔案整理成可以上傳的大小。
+ * - 影片不大：直接上傳，AI 會看畫面也會聽聲音
+ * - 影片太大（例如螢幕錄影）：在手機上每隔幾秒取一張畫面，只上傳畫面（frames: true，AI 聽不到聲音）
+ * - 圖片：縮小後上傳
+ */
+async function prepareMedia(files) {
+  const video = files.find(f => f.type.startsWith("video/"));
+  if (video) {
+    const direct = video.size <= MEDIA_MAX_BYTES && /mp4|quicktime|webm|m4v/.test(video.type);
+    return direct ? { blobs: [video], video: true, frames: false }
+                  : { blobs: await videoFrames(video), video: false, frames: true };
+  }
+  const images = files.filter(f => f.type.startsWith("image/")).slice(0, MEDIA_MAX_SHOTS);
+  if (!images.length) throw new Error("請選擇影片或圖片檔");
+  const blobs = [];
+  for (const f of images) blobs.push(await shrinkImage(f));
+  return { blobs, video: false, frames: false };
+}
+
+function canvasToJpeg(source, w, h, maxSide, quality) {
+  const scale = Math.min(1, maxSide / Math.max(w, h));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(w * scale));
+  canvas.height = Math.max(1, Math.round(h * scale));
+  canvas.getContext("2d").drawImage(source, 0, 0, canvas.width, canvas.height);
+  return new Promise((resolve, reject) =>
+    canvas.toBlob(b => (b ? resolve(b) : reject(new Error("圖片處理失敗"))), "image/jpeg", quality));
+}
+
+async function shrinkImage(file) {
+  let bmp;
+  try { bmp = await createImageBitmap(file); } catch (e) { throw new Error(`「${file.name}」這張圖片打不開，請換成 JPG 或 PNG`); }
+  try { return await canvasToJpeg(bmp, bmp.width, bmp.height, 1600, 0.82); } finally { bmp.close?.(); }
+}
+
+function mediaEvent(el, name, ms = 15000) {
+  return new Promise((resolve, reject) => {
+    const done = fn => () => { clearTimeout(timer); el.removeEventListener(name, ok); el.removeEventListener("error", bad); fn(); };
+    const ok = done(resolve);
+    const bad = done(() => reject(new Error("這支影片在這台裝置上打不開，請改上傳截圖")));
+    const timer = setTimeout(bad, ms);
+    el.addEventListener(name, ok);
+    el.addEventListener("error", bad);
+  });
+}
+
+/** 從影片平均取出最多 MEDIA_MAX_FRAMES 張畫面（大約每 2 秒一張） */
+async function videoFrames(file) {
+  const url = URL.createObjectURL(file);
+  const v = document.createElement("video");
+  v.muted = true;
+  v.playsInline = true;
+  v.preload = "auto";
+  try {
+    const ready = mediaEvent(v, "loadeddata");
+    v.src = url;
+    v.load();
+    await ready;
+    const dur = Number.isFinite(v.duration) ? v.duration : 0;
+    if (!dur || !v.videoWidth) throw new Error("這支影片在這台裝置上打不開，請改上傳截圖");
+    const n = Math.max(1, Math.min(MEDIA_MAX_FRAMES, Math.ceil(dur / 2)));
+    const frames = [];
+    for (let i = 0; i < n; i++) {
+      const seeked = mediaEvent(v, "seeked");
+      v.currentTime = (i + 0.5) * dur / n;
+      await seeked;
+      frames.push(await canvasToJpeg(v, v.videoWidth, v.videoHeight, 768, 0.72));
+    }
+    return frames;
+  } finally {
+    v.removeAttribute("src");
+    v.load();
+    URL.revokeObjectURL(url);
+  }
 }
 
 // ===== 地點補座標 =====

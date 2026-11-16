@@ -3,7 +3,9 @@ Etrip 後端（Flask，部署在 Google Cloud Run）
 
 - /parse              AI 把雜亂的行程文字整理成 JSON
 - /extract_places     AI 從文字中抽出景點 / 餐廳 / 商店
-- /extract_url        讀取網址抽出地點；YouTube 影片會直接讓 Gemini 看影片
+- /extract_url        讀取網址抽出地點；YouTube 影片會直接讓 Gemini 看影片；
+                      IG 貼文會讀公開的說明文字，讀不到時請前端改上傳影片或截圖
+- /extract_media      上傳影片或截圖（例如 IG 影片、螢幕錄影），讓 Gemini 看內容找地點
 - /enrich_locations   地點名稱轉座標（Google Geocoding API）
 - /sync               雲端同步（Firestore）：建立同步碼、讀取、儲存、刪除
 - /health             健康檢查 / 提早喚醒
@@ -22,6 +24,7 @@ Etrip 後端（Flask，部署在 Google Cloud Run）
   GEMINI_PRICE_IN / GEMINI_PRICE_AUDIO / GEMINI_PRICE_OUT
                        選填，每百萬 tokens 的價格（美元），用來估算花費，預設 0.30 / 1.00 / 2.50
   VIDEO_MAX_MINUTES    選填，YouTube 影片最多看幾分鐘，預設 50
+  MEDIA_MAX_MB         選填，上傳的影片或截圖總共最多幾 MB，預設 14（Gemini 一次請求的上限約 20MB）
 
 防濫用：每個 IP 有使用次數限制（見 RATE_RULES），加上每天的總量上限。
 網址是公開的，任何人都能直接呼叫，這些限制讓費用不會失控。
@@ -59,7 +62,11 @@ from flask_cors import CORS
 load_dotenv()
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
+JSON_MAX_BYTES = 8 * 1024 * 1024
+MEDIA_MAX_BYTES = int(float(os.getenv("MEDIA_MAX_MB", "14")) * 1024 * 1024)   # 上傳的影片 / 截圖
+MEDIA_MAX_IMAGES = 40
+# 整體上限放寬給上傳用；其他端點在 limit_body_size 維持 8MB
+app.config["MAX_CONTENT_LENGTH"] = max(JSON_MAX_BYTES, MEDIA_MAX_BYTES + 1024 * 1024)
 app.json.ensure_ascii = False   # 中文直接顯示，瀏覽器打開網址時看得懂
 
 _origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
@@ -76,7 +83,7 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 SYNC_COLLECTION = os.getenv("SYNC_COLLECTION", "etrip_sync")
 
 # 後端版本：每次修改 server.py 時更新，部署後打開 /health 就能確認是不是新版
-APP_VERSION = "2026-11-06"
+APP_VERSION = "2026-11-16"
 
 MAX_TEXT = 15000        # 送給 AI 的文字上限
 MAX_PLACES = 80         # 一次最多補幾個座標
@@ -147,11 +154,12 @@ def parse_json_text(text):
     return {}
 
 
-def ask_json(prompt, video_url=None, clip=False):
-    """送出提示並取得 JSON 物件；video_url 是 YouTube 網址時會一起送影片，clip=True 只看前 VIDEO_MAX_SECONDS 秒"""
+def ask_json(prompt, video_url=None, clip=False, media=None):
+    """送出提示並取得 JSON 物件；video_url 是 YouTube 網址時會一起送影片，clip=True 只看前 VIDEO_MAX_SECONDS 秒。
+    media 是上傳的檔案 [(內容 bytes, MIME 類型), …]，可以是一支影片或多張圖片"""
     if AI_PROVIDER == "openai":
-        if video_url:
-            raise AIError("目前的 AI 設定不支援讀取影片，請改用 Gemini")
+        if video_url or media:
+            raise AIError("目前的 AI 設定不支援讀取影片或圖片，請改用 Gemini")
         global _openai
         if _openai is None:
             from openai import OpenAI
@@ -174,6 +182,11 @@ def ask_json(prompt, video_url=None, clip=False):
         contents = [types.Part(file_data=types.FileData(file_uri=video_url), video_metadata=meta), prompt]
         config["media_resolution"] = types.MediaResolution.MEDIA_RESOLUTION_LOW
         model = GEMINI_VIDEO_MODEL
+    elif media:
+        contents = [types.Part.from_bytes(data=b, mime_type=m) for b, m in media] + [prompt]
+        if any(m.startswith("video/") for _, m in media):
+            config["media_resolution"] = types.MediaResolution.MEDIA_RESOLUTION_LOW
+            model = GEMINI_VIDEO_MODEL
     cfg = types.GenerateContentConfig(**config)
     try:
         res = ai_client().models.generate_content(model=model, contents=contents, config=cfg)
@@ -316,6 +329,12 @@ def check_rate(kind):
     return None
 
 
+def refund_daily(kind, n=1):
+    """這次其實沒有用到 AI（例如 IG 貼文讀不到內容），把每天的額度還回去"""
+    with _rate_lock:
+        _daily[kind] = max(0, _daily[kind] - n)
+
+
 def use_daily(kind, n=1):
     """每天的總量上限（所有人加起來）。超過回傳 False"""
     today = date.today().isoformat()
@@ -347,7 +366,19 @@ def limited(kind, daily=False):
     return deco
 
 
-AI_ENDPOINTS = {"parse_trip", "extract_places", "extract_url"}
+AI_ENDPOINTS = {"parse_trip", "extract_places", "extract_url", "extract_media"}
+
+
+@app.before_request
+def limit_body_size():
+    """只有上傳影片 / 截圖可以超過 8MB"""
+    if request.endpoint != "extract_media" and (request.content_length or 0) > JSON_MAX_BYTES:
+        return error("內容太大了", 413)
+
+
+@app.errorhandler(413)
+def too_large(_e):
+    return error(f"檔案太大了，最多 {MEDIA_MAX_BYTES // (1024 * 1024)}MB。影片請剪短一點，或改上傳截圖", 413)
 
 
 @app.after_request
@@ -545,9 +576,14 @@ def is_public_url(url):
         return False
 
 
-def fetch_page(url):
+BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+# IG 對一般瀏覽器只回登入頁，對「連結預覽」的請求才會附上貼文說明（og:description）
+PREVIEW_UA = "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)"
+
+
+def fetch_page(url, user_agent=BROWSER_UA):
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        "User-Agent": user_agent,
         "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8,ja;q=0.7",
     }
     for _ in range(4):  # 手動處理轉址，每一步都檢查
@@ -560,6 +596,105 @@ def fetch_page(url):
         r.encoding = r.apparent_encoding or r.encoding
         return r.text[:2_000_000]
     raise ValueError("轉址太多次")
+
+
+def is_instagram(url):
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return False
+    return host in ("instagram.com", "instagr.am") or host.endswith(".instagram.com")
+
+
+def instagram_caption(url):
+    """讀公開 IG 貼文的說明文字；讀不到（私人帳號、被擋、沒寫說明）回傳空字串"""
+    try:
+        html = fetch_page(url, PREVIEW_UA)
+    except Exception as e:  # noqa: BLE001
+        print("IG 抓取錯誤:", e)
+        return ""
+    soup = BeautifulSoup(html, "html.parser")
+    best = ""
+    for key in ("og:description", "og:title"):
+        tag = soup.find("meta", attrs={"property": key})
+        text = (tag.get("content") or "").strip() if tag else ""
+        # 格式是「1,234 likes, 56 comments - 帳號 on 日期: "說明文字"」，只留引號裡的說明
+        m = re.search(r':\s*["“](.*)["”]\.?\s*$', text, flags=re.S)
+        if m and len(m.group(1)) > len(best):
+            best = m.group(1).strip()
+    return best
+
+
+IG_NEED_UPLOAD = {"places": [], "title": "", "social": "instagram", "need_upload": True}
+
+
+def media_kind(mime, data):
+    """只收常見的影片與圖片格式，回傳 Gemini 看得懂的 MIME 類型"""
+    mime = (mime or "").split(";")[0].strip().lower()
+    if mime in ("image/jpeg", "image/jpg") and data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if mime == "image/png" and data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if mime == "image/webp" and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if mime in ("video/mp4", "video/quicktime", "video/mov", "video/x-m4v") and data[4:8] == b"ftyp":
+        if mime in ("video/quicktime", "video/mov"):
+            return "video/quicktime" if AI_PROVIDER == "vertex" else "video/mov"
+        return "video/mp4"
+    if mime == "video/webm" and data[:4] == b"\x1a\x45\xdf\xa3":
+        return "video/webm"
+    return None
+
+
+@app.route("/extract_media", methods=["POST"])
+@limited("ai", daily=True)
+def extract_media():
+    """上傳一支影片或幾張截圖（IG、TikTok 等讀不到網址的貼文），讓 Gemini 看內容找地點"""
+    files = [f for f in request.files.getlist("media") if f and f.filename]
+    caption = str(request.form.get("caption", "")).strip()[:MAX_TEXT]
+
+    def reject(message, status=400):
+        refund_daily("ai")   # 還沒用到 AI
+        return error(message, status)
+
+    if not files:
+        return reject("沒有收到影片或截圖")
+    if len(files) > MEDIA_MAX_IMAGES:
+        return reject(f"一次最多 {MEDIA_MAX_IMAGES} 張圖片")
+
+    media, total = [], 0
+    for f in files:
+        data = f.read()
+        total += len(data)
+        if total > MEDIA_MAX_BYTES:
+            refund_daily("ai")
+            return too_large(None)
+        kind = media_kind(f.mimetype, data)
+        if not kind:
+            return reject("這個檔案格式讀不了，請上傳 MP4 / MOV 影片，或 JPG / PNG 截圖")
+        media.append((data, kind))
+
+    has_video = any(m.startswith("video/") for _, m in media)
+    if has_video and len(media) > 1:
+        return reject("一次只能上傳一支影片，或是幾張截圖")
+
+    what = "影片" if has_video else "截圖或影片畫面（依照時間順序）"
+    caption_block = f"貼文的說明文字（可以用來確認店名與地區）：\n{caption}" if caption else ""
+    prompt = f"""
+這是一則旅遊相關社群貼文（例如 Instagram）的{what}。
+請從畫面、畫面上的文字、字幕{"和旁白" if has_video else ""}中，找出所有介紹到、可以實際前往的景點、餐廳、咖啡廳或商店。
+{"請仔細聽完整段聲音：旁白或對話裡口頭提到、但畫面上沒有出現文字的地點，也一定要列出來。" if has_video else ""}
+{PLACES_FORMAT}
+{caption_block}
+"""
+    try:
+        places = clean_places(ask_json(prompt, media=media))
+    except Exception as e:  # noqa: BLE001
+        if "INVALID_ARGUMENT" in str(e):
+            print("extract_media 錯誤:", repr(e))
+            return error("AI 讀不了這個檔案，請換一個格式（MP4 影片或 JPG 截圖），或把影片剪短一點", 400)
+        return ai_failed(e, "extract_media")
+    return jsonify({"places": places, "title": "", "video": has_video})
 
 
 @app.route("/extract_url", methods=["POST"])
@@ -595,6 +730,20 @@ def extract_url():
         clipped = bool(secs and secs > VIDEO_MAX_SECONDS)
         return jsonify({"places": places, "title": title, "source": yt, "video": True,
                         "clipped_minutes": VIDEO_MAX_SECONDS // 60 if clipped else 0})
+
+    # IG：先試著讀公開的說明文字；讀不到或裡面沒有地點，請前端改上傳影片 / 截圖
+    if is_instagram(url):
+        caption = instagram_caption(url)
+        if len(caption) < 10:
+            refund_daily("ai")   # 沒有用到 AI
+            return jsonify(IG_NEED_UPLOAD)
+        try:
+            places = extract_places_from_text(caption[:MAX_TEXT])
+        except Exception as e:  # noqa: BLE001
+            return ai_failed(e, "instagram")
+        # caption 一起回傳：之後上傳影片時可以當作參考
+        return jsonify({"places": places, "title": "", "social": "instagram", "caption_only": True,
+                        "caption": caption[:MAX_TEXT], "need_upload": not places})
 
     try:
         html = fetch_page(url)

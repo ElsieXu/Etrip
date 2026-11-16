@@ -154,6 +154,8 @@ gcloud run services update etrip-api --region asia-east1 --update-env-vars "AI_P
 另外：
 
 - **YouTube 影片最多看前 50 分鐘**（`VIDEO_MAX_MINUTES`），一支影片最多約 NT$5
+- **上傳的影片 / 截圖最多 14MB**（`MEDIA_MAX_MB`）：IG 影片通常只有 1～2 分鐘，費用比 YouTube 長片少很多；一樣算在每月 AI 預算和每天次數裡
+- **IG 貼文說明讀不到**：IG 可能擋掉雲端主機的請求，這時網站會請使用者改上傳影片或截圖，不會出錯也不會扣 AI 次數。如果每次都讀不到，代表 IG 改了規則，功能還是可以靠上傳使用
 - **每月 AI 預算 US$10**（`MONTHLY_AI_BUDGET_USD`）：後端用每次 AI 回報的用量估算花費，記在 Firestore 的 `etrip_usage`
   - 用到 **85%**：使用 AI 時跳出提醒（每天一次），AI 功能旁邊也會顯示「本月 AI 額度已用 XX%」
   - 用到 **100%**：後端自己先停用 AI，顯示「這個月的 AI 額度用完了，下個月 1 號會恢復」
