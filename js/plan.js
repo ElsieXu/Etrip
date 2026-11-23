@@ -141,6 +141,7 @@ function openItemSheet(dayIndex, item) {
         const spent = tripData.expenses.filter(e => e.place && e.place === it.text);
         return `<button type="submit" name="_action" value="expense" class="list-btn" formnovalidate>${icon("wallet")}<span><b>記一筆這裡的花費</b><small>${spent.length ? `已記 ${spent.length} 筆，共 ${fmtMoney(sumExpenses(spent).total, "TWD")}` : "例如門票、餐點"}</small></span></button>`;
       })()}
+      ${isNew ? "" : nearbySearchHTML(it)}
       ${isNew ? "" : relocateButtonHTML(it)}
       ${isNew ? "" : `
       <details class="review-fields" ${it.rating || it.review || it.done || tripPhase() === "after" ? "open" : ""}>
@@ -163,6 +164,11 @@ function openItemSheet(dayIndex, item) {
         return;
       }
       if (v === "relocate") { relocateTarget(it); return; }
+      if (v === "nearby-custom") {
+        if (!str(d.nearq)) { toast("先輸入要找什麼，例如：藥局"); return false; }
+        window.open(nearbySearchUrl(it, str(d.nearq)), "_blank", "noopener");
+        return false;
+      }
       if (v !== "save") return;
       const text = str(d.text);
       if (!text) return false;
@@ -328,10 +334,39 @@ function addBackupToDay(backup, dayIndex, position) {
 /** 補座標後存檔（背景執行，不擋畫面） */
 async function enrichAndSave(targets, { silent = true } = {}) {
   if (!targets.some(t => t.lat == null)) return 0;
-  const found = await enrichTargets(targets, tripData.meta.region);
+  const found = await enrichTargets(targets, tripData);
   if (found) { saveTrip(); refresh(); }
   if (!silent) toast(found ? `已補上 ${found} 個地點的座標` : "這次沒有找到新的座標");
   return found;
+}
+
+// ===== 從這站找附近（例如吃完湯咖哩，找附近的手搖飲）=====
+// 只是打開 Google 地圖的搜尋連結，不經過後端，不花查詢額度
+
+const NEARBY_PRESETS = [["🧋", "手搖飲"], ["☕", "咖啡"], ["🚻", "廁所"], ["🅿️", "停車場"], ["🏪", "便利商店"]];
+
+function nearbySearchUrl(p, q) {
+  return `https://www.google.com/maps/search/${encodeURIComponent(q)}/@${p.lat},${p.lng},16z`;
+}
+
+function nearbySearchHTML(it) {
+  if (it.lat == null) {
+    return `<div class="nearby-search"><span class="field-label">從這站找附近</span>
+      <p class="field-hint">這站還沒有位置，先按下面的「重新定位」</p></div>`;
+  }
+  return `
+  <div class="nearby-search">
+    <span class="field-label">從這站找附近</span>
+    <div class="chip-row">
+      ${NEARBY_PRESETS.map(([emoji, q]) =>
+        `<a class="chip" href="${esc(nearbySearchUrl(it, q))}" target="_blank" rel="noopener">${emoji} ${esc(q)}</a>`).join("")}
+    </div>
+    <div class="nearby-custom">
+      <input type="search" name="nearq" placeholder="自己輸入，例如：藥局、加油站" aria-label="要在這站附近找什麼">
+      <button type="submit" name="_action" value="nearby-custom" class="btn sm" formnovalidate>${icon("search")}搜尋</button>
+    </div>
+    <p class="field-hint">會打開 Google 地圖，以「${esc(it.text)}」為中心搜尋</p>
+  </div>`;
 }
 
 /** 編輯畫面裡的「重新定位」按鈕（行程項目、口袋名單共用） */
@@ -346,7 +381,7 @@ async function relocateTarget(t) {
   Object.assign(t, { lat: null, lng: null, placeId: "" });
   saveTrip(); refresh();
   toast("正在重新定位…");
-  const found = await enrichTargets([t], tripData.meta.region).catch(() => 0);
+  const found = await enrichTargets([t], tripData).catch(() => 0);
   saveTrip(); refresh();
   toast(found ? "已重新定位" : "找不到準確的位置，導航會改用名稱搜尋", {
     action: { label: "復原", fn: () => { Object.assign(t, old); saveTrip(); refresh(); } }
@@ -357,16 +392,28 @@ async function relocateTarget(t) {
 // 舊版補座標查不到店名時，會存成整個縣市或鄉鎮的位置，結果好幾個不同的地點疊在同一點、
 // 距離變 0、導航到錯的地方。每台裝置啟動時檢查一次：不同名字卻座標完全相同的，清掉座標，
 // 等後端是新版（會拒收這種結果）再重新查。清掉之後導航會改用名稱搜尋，所以就算還沒重查也不會導錯。
-const COORD_FIX_BACKEND = "2026-11-23";
+const COORD_FIX_BACKEND = "2026-11-23.2";   // 後端要能排除「地區本身」、支援前後站當中心點
+const COORD_FIX_VERSION = 2;                  // 第 2 次：目的地填成景點時，地點被定位到那個景點（2026-11-23）
+
+/** 名字只差標點、空白，或一個包含另一個（「垂坤食品-旗艦店」「垂坤食品旗艦店」、「寶湖宮天地堂」「寶湖宮天地堂地母廟」）算同一個地點 */
+function placeNameKey(name) {
+  return str(name).toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+}
+function countDistinctPlaces(names) {
+  const keys = [...new Set(names.map(placeNameKey).filter(Boolean))].sort((a, b) => b.length - a.length);
+  const groups = [];
+  for (const k of keys) if (!groups.some(g => g.includes(k) || k.includes(g))) groups.push(k);
+  return groups.length;
+}
 
 function clearStackedCoords() {
   const groups = new Map();
   const add = (o, name) => {
     if (o.lat == null || o.lng == null) return;
     const k = `${o.lat.toFixed(5)},${o.lng.toFixed(5)}`;
-    if (!groups.has(k)) groups.set(k, { names: new Set(), list: [] });
+    if (!groups.has(k)) groups.set(k, { names: [], list: [] });
     const g = groups.get(k);
-    g.names.add(str(name).toLowerCase());
+    g.names.push(name);
     g.list.push(o);
   };
   const trips = new Set(library.trips);
@@ -375,18 +422,23 @@ function clearStackedCoords() {
   library.backups.forEach(b => add(b, b.name));
   const cleared = [];
   for (const g of groups.values()) {
-    if (g.names.size < 2) continue;
-    g.list.forEach(o => { Object.assign(o, { lat: null, lng: null, placeId: "" }); cleared.push(o.id); });
+    if (countDistinctPlaces(g.names) < 2) continue;
+    g.list.forEach(o => {
+      Object.assign(o, { lat: null, lng: null, placeId: "" });
+      // 口袋名單的地區如果是從錯的地址自動補的（只有縣市兩個字，例如「南投」），一起清掉，不然重查時還是會被帶偏
+      if ("area" in o && /^[一-鿿]{2}$/.test(str(o.area))) o.area = "";
+      cleared.push(o.id);
+    });
   }
   return cleared;
 }
 
 async function fixStackedCoords() {
   if (DEMO) return;
-  if (!prefs.coordFix) {
-    prefs.coordFix = 1;
+  if ((prefs.coordFix || 0) < COORD_FIX_VERSION) {
+    prefs.coordFix = COORD_FIX_VERSION;
     const cleared = clearStackedCoords();
-    if (cleared.length) { prefs.coordRefetch = cleared; saveTrip(); refresh(); }
+    if (cleared.length) { prefs.coordRefetch = [...new Set([...(prefs.coordRefetch || []), ...cleared])]; saveTrip(); refresh(); }
     savePrefs();
   }
   const ids = new Set(prefs.coordRefetch || []);
@@ -402,10 +454,10 @@ async function fixStackedCoords() {
   if (tripData) trips.add(tripData);
   for (const t of trips) {
     const items = t.days.flatMap(d => d.items).filter(it => ids.has(it.id) && it.lat == null);
-    if (items.length) found += await enrichTargets(items, t.meta.region);
+    if (items.length) found += await enrichTargets(items, t);
   }
   const backups = library.backups.filter(b => ids.has(b.id) && b.lat == null);
-  if (backups.length) found += await enrichTargets(backups, tripData?.meta.region || "");
+  if (backups.length) found += await enrichTargets(backups, tripData);
   if (found) { saveTrip(); refresh(); }
 }
 
@@ -416,7 +468,7 @@ function openDayTripSheet() {
     title: "建立一日遊",
     body: `
       ${field({ name: "title", label: "名稱", placeholder: "例：九份金瓜石一日遊", autofocus: true })}
-      ${field({ name: "region", label: "目的地", placeholder: "例：九份、台中", hint: "用來提高地點定位的準確度" })}
+      ${field({ name: "region", label: "主要地區（選填）", placeholder: "例：新北；南投、台中", hint: "填縣市或城市就好，跨好幾個地方用頓號分開。不要填景點名稱，地點會被定位到那個景點" })}
       ${field({ name: "date", label: "日期", type: "date", value: toISODate(new Date()) })}
       <div class="field-row">
         ${field({ name: "depart", label: "出發時間", type: "time" })}

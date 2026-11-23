@@ -78,7 +78,7 @@ function openTripSettings({ isNew = false } = {}) {
     title: isNew ? "新的多日行程" : "行程設定",
     body: `
       ${field({ name: "title", label: "行程名稱", value: m.title, placeholder: "例：沖繩 5 天 4 夜", autofocus: true })}
-      ${field({ name: "region", label: "目的地（城市 / 地區）", value: m.region, placeholder: "例：沖繩、台南", hint: "用來提高地點定位的準確度" })}
+      ${field({ name: "region", label: "主要地區（選填）", value: m.region, placeholder: "例：沖繩；南投、台中", hint: "填縣市或城市就好，跨好幾個地方用頓號分開。不要填景點名稱，地點會被定位到那個景點" })}
       ${field({ name: "startDate", label: "出發日（Day 1）", value: m.startDate, type: "date", hint: "之後每一天的日期會自動往後推算" })}
       ${isNew ? field({ name: "days", label: "天數", value: 3, type: "number" }) : ""}
       <div class="field-row">

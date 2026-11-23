@@ -123,9 +123,10 @@ function inferAbroad(t) {
   const text = `${t.meta.region} ${t.meta.title}`;
   if (TW_PLACES.test(text)) return false;
   if (ABROAD_PLACES.some(([re]) => re.test(text))) return true;
-  const g = _geo[str(t.meta.region)];
+  const first = tripRegions(t)[0];
+  const g = _geo[first];
   if (g) return g.cc !== "TW";
-  if (t.meta.region) geocodeRegion(t.meta.region);
+  if (first) geocodeRegion(first);
   return null;
 }
 
@@ -141,9 +142,10 @@ function tripCurrency(t = tripData) {
   const text = `${t.meta.region} ${t.meta.title}`;
   const hit = ABROAD_PLACES.find(([re]) => re.test(text));
   if (hit) return hit[1];
-  const g = _geo[str(t.meta.region)];
+  const first = tripRegions(t)[0];
+  const g = _geo[first];
   if (g && COUNTRY_CURRENCY[g.cc]) return COUNTRY_CURRENCY[g.cc];
-  if (t.meta.region) geocodeRegion(t.meta.region);
+  if (first) geocodeRegion(first);
   return "";
 }
 
@@ -180,9 +182,10 @@ function dayLocation(t, i) {
     const near = center(t.days[i - k]?.items || []) || center(t.days[i + k]?.items || []);
     if (near) return near;
   }
-  const g = _geo[str(t.meta.region)];
+  const first = tripRegions(t)[0];
+  const g = _geo[first];
   if (g) return { lat: g.lat, lng: g.lng };
-  if (t.meta.region) geocodeRegion(t.meta.region);
+  if (first) geocodeRegion(first);
   return null;
 }
 

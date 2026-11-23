@@ -1102,3 +1102,10 @@ a.list-btn { text-decoration: none; }
 /* 每月 AI 額度提醒 */
 .ai-budget-note { margin: 8px 0; padding: 10px 12px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); font-size: 13px; font-weight: 600; }
 .ai-budget-note.out { background: var(--danger-soft, var(--warn-soft)); color: var(--danger, var(--warn)); }
+
+/* ===== 從這站找附近 ===== */
+.nearby-search { margin: 6px 0 4px; }
+.nearby-search .chip-row { margin: 6px 0; }
+.nearby-search a.chip { text-decoration: none; }
+.nearby-custom { display: flex; gap: 6px; align-items: center; }
+.nearby-custom input { flex: 1; min-width: 0; }

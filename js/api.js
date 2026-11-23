@@ -228,20 +228,71 @@ async function videoFrames(file) {
 
 // ===== 地點補座標 =====
 
+/** 行程的「主要地區」可以填好幾個（南投、台中、苗栗），用頓號、逗號或空白分開 */
+function tripRegions(t = tripData) {
+  return str(t?.meta?.region).split(/[、,，/／\s]+/).filter(Boolean);
+}
+
+/** 主要地區第一個的中心點（查天氣用的同一個免費服務，有快取） */
+async function regionCenter(t) {
+  const first = tripRegions(t)[0];
+  if (!first || typeof geocodeRegion !== "function") return null;
+  try { return await geocodeRegion(first); } catch (e) { return null; }
+}
+
+function centerOf(pts) {
+  if (!pts.length) return null;
+  return { lat: pts.reduce((s, p) => s + p.lat, 0) / pts.length, lng: pts.reduce((s, p) => s + p.lng, 0) / pts.length };
+}
+
+/**
+ * 「優先找這附近」的範圍（公尺）。旅行是一站接一站移動的，所以：
+ * 1. 行程項目：同一天前一站、後一站（已經有位置的）
+ * 2. 同一天沒有可以參考的站：整趟行程已知地點的中心
+ * 3. 都沒有：主要地區的中心
+ * 口袋名單的地點不屬於哪一天，有填自己的地區就用文字提示，沒填才用 2、3。
+ * 不再把目的地文字硬加在每個店名後面：目的地填成景點（例如「南投地母廟」）時，Google 會直接回傳那個景點。
+ */
+async function biasFor(t, trip, pending) {
+  const known = x => x.lat != null && !pending.has(x);
+  if (trip && "text" in t) {
+    for (const d of trip.days) {
+      const i = d.items.indexOf(t);
+      if (i < 0) continue;
+      const prev = d.items.slice(0, i).reverse().find(known);
+      const next = d.items.slice(i + 1).find(known);
+      const pts = [prev, next].filter(Boolean);
+      if (pts.length === 2) {
+        const km = haversine(prev.lat, prev.lng, next.lat, next.lng);
+        return { ...centerOf(pts), r: Math.round(Math.min(50000, Math.max(8000, km * 500 + 10000))) };
+      }
+      if (pts.length === 1) return { lat: pts[0].lat, lng: pts[0].lng, r: 20000 };
+      break;
+    }
+  }
+  const pts = trip ? trip.days.flatMap(d => d.items).filter(known) : [];
+  if (pts.length) return { ...centerOf(pts), r: 50000 };
+  const g = await regionCenter(trip);
+  return g ? { lat: g.lat, lng: g.lng, r: 50000 } : null;
+}
+
 /**
  * targets：行程項目（.text）或口袋名單（.name），會直接寫入 lat / lng / placeId。
- * hint：地區提示（例如「沖繩」「台南」），讓同名地點定位得更準。
+ * trip：這些地點屬於哪一趟行程（用前後站決定優先找哪附近）。
  */
-async function enrichTargets(targets, hint = "") {
+async function enrichTargets(targets, trip = tripData) {
   const todo = targets.filter(t => t.lat == null && str(t.name || t.text));
+  const pending = new Set(todo);
   let found = 0;
   for (let i = 0; i < todo.length; i += 25) {
     const chunk = todo.slice(i, i + 25);
     const names = chunk.map(t => str(t.name || t.text));
-    const hints = chunk.map(t => str(t.area) || hint);
+    const hints = chunk.map(t => str(t.area));
+    const bias = [];
+    for (const t of chunk) bias.push(str(t.area) ? null : await biasFor(t, trip, pending));
     let data;
     try {
-      data = await apiPost("/enrich_locations", { places: names, hints }, { timeout: 120000 });
+      data = await apiPost("/enrich_locations", { places: names, hints, bias }, { timeout: 120000 });
     } catch (e) {
       console.warn("定位失敗", e);
       continue;
@@ -255,6 +306,7 @@ async function enrichTargets(targets, hint = "") {
         if (r.place_id) t.placeId = r.place_id;
         // 口袋名單沒填地區時，用地址自動補上
         if ("area" in t && !t.area && r.address) t.area = areaFromAddress(r.address);
+        pending.delete(t);   // 後面的地點可以拿它當參考
         found++;
       }
     });
