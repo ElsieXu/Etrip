@@ -166,7 +166,10 @@ function nearbyCardHTML(day, next) {
       <h2>${icon("bookmark")}附近的口袋名單</h2>
       <button class="btn sm ${me ? "ghost" : "primary-soft"}" data-action="locate" data-then="today">${icon("locate")}${me ? "更新位置" : "用我的位置"}</button>
     </div>
-    <p class="muted small">${origin ? `距離${esc(originLabel)}由近到遠` : "按「用我的位置」就能看到離你最近的收藏"}</p>
+    <p class="muted small">${origin
+      ? `以 <b>${esc(originLabel)}</b> 為中心，由近到遠${me ? "" : "。不在這裡？按右上「用我的位置」"}`
+      : "按「用我的位置」就能看到離你最近的收藏"}</p>
+    <p class="muted small">這裡只列你收藏的地點。想找沒收藏過的店（例如手搖飲），點行程裡的那一站 →「從這站找附近」</p>
     <div class="chip-row">
       ${cats.map(([k, label]) => `<button class="chip ${nearCat === k ? "active" : ""}" data-action="near-cat" data-v="${k}">${label}</button>`).join("")}
       <button class="chip ${nearRainy ? "active" : ""}" data-action="near-rainy">🌧 雨天備案</button>

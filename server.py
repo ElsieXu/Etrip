@@ -6,7 +6,7 @@ Etrip 後端（Flask，部署在 Google Cloud Run）
 - /extract_url        讀取網址抽出地點；YouTube 影片會直接讓 Gemini 看影片；
                       IG 貼文會讀公開的說明文字，讀不到時請前端改上傳影片或截圖
 - /extract_media      上傳影片或截圖（例如 IG 影片、螢幕錄影），讓 Gemini 看內容找地點
-- /enrich_locations   地點名稱轉座標（先用 Places API 文字搜尋，沒開時用 Geocoding API）
+- /enrich_locations   地點名稱轉座標（先用 Places API 文字搜尋，沒開時用 Geocoding API；可指定優先找哪附近）
 - /sync               雲端同步（Firestore）：建立同步碼、讀取、儲存、刪除
 - /health             健康檢查 / 提早喚醒
 
@@ -83,7 +83,7 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 SYNC_COLLECTION = os.getenv("SYNC_COLLECTION", "etrip_sync")
 
 # 後端版本：每次修改 server.py 時更新，部署後打開 /health 就能確認是不是新版
-APP_VERSION = "2026-11-23"
+APP_VERSION = "2026-11-23.2"
 
 MAX_TEXT = 15000        # 送給 AI 的文字上限
 MAX_PLACES = 80         # 一次最多補幾個座標
@@ -801,13 +801,36 @@ def is_area_only(types):
 
 # 地點搜尋（Places API）沒有開啟或金鑰沒有權限時，記下來之後就不再試，直接用地址查詢
 _places_disabled = False
+BIAS_MAX_M = 50000      # Places API 偏好範圍的半徑上限（公尺）
 
 
-def places_search(query):
-    """用 Places API（New）的文字搜尋找店名、景點：比地址查詢準很多"""
+def one_line(text):
+    """Google 的錯誤是好幾行的 JSON；Cloud Run 會把每一行拆成一筆記錄，壓成一行才看得到全文"""
+    return " ".join(str(text).split())[:500]
+
+
+def clean_bias(b):
+    """前端傳來的「優先找這附近」：{lat, lng, r（公尺）}；格式不對就當作沒有"""
+    try:
+        lat, lng = float(b["lat"]), float(b["lng"])
+        r = min(max(float(b.get("r") or 20000), 1000), BIAS_MAX_M)
+    except (TypeError, KeyError, ValueError):
+        return None
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        return None
+    return {"lat": lat, "lng": lng, "r": r}
+
+
+def places_search(query, bias=None):
+    """用 Places API（New）的文字搜尋找店名、景點：比地址查詢準很多。
+    bias：優先找這個範圍裡的（不是只能在範圍裡；附近真的沒有，還是會給最符合的）"""
     global _places_disabled
     if _places_disabled:
         return None
+    body = {"textQuery": query, "languageCode": "zh-TW", "pageSize": 1}
+    if bias:
+        body["locationBias"] = {"circle": {"center": {"latitude": bias["lat"], "longitude": bias["lng"]},
+                                           "radius": bias["r"]}}
     try:
         res = _session.post(
             "https://places.googleapis.com/v1/places:searchText",
@@ -815,7 +838,7 @@ def places_search(query):
                 "X-Goog-Api-Key": GOOGLE_KEY,
                 "X-Goog-FieldMask": "places.id,places.location,places.formattedAddress,places.types",
             },
-            json={"textQuery": query, "languageCode": "zh-TW", "pageSize": 1},
+            json=body,
             timeout=8,
         )
     except requests.RequestException as e:
@@ -823,10 +846,10 @@ def places_search(query):
         return None
     if res.status_code in (401, 403):
         _places_disabled = True
-        print("地點搜尋（Places API）無法使用，改用地址查詢:", res.text[:300])
+        print("地點搜尋（Places API）無法使用，改用地址查詢:", one_line(res.text))
         return None
     if not res.ok:
-        print("地點搜尋錯誤:", res.status_code, res.text[:300])
+        print("地點搜尋錯誤:", res.status_code, one_line(res.text))
         return None
     for p in res.json().get("places") or []:
         loc = p.get("location") or {}
@@ -837,13 +860,13 @@ def places_search(query):
     return None
 
 
-def geocode(query, allow_area=False):
+def geocode(query, allow_area=False, bias=None):
     """地址查詢（Geocoding API）。allow_area=False 時，只查到整個區域就當作沒找到"""
-    res = _session.get(
-        "https://maps.googleapis.com/maps/api/geocode/json",
-        params={"address": query, "key": GOOGLE_KEY, "language": "zh-TW"},
-        timeout=8,
-    ).json()
+    params = {"address": query, "key": GOOGLE_KEY, "language": "zh-TW"}
+    if bias:
+        d = bias["r"] / 111000   # 公尺換成大約的經緯度
+        params["bounds"] = f"{bias['lat'] - d},{bias['lng'] - d}|{bias['lat'] + d},{bias['lng'] + d}"
+    res = _session.get("https://maps.googleapis.com/maps/api/geocode/json", params=params, timeout=8).json()
     for r in res.get("results") or []:
         if not allow_area and is_area_only(r.get("types")):
             continue
@@ -853,17 +876,41 @@ def geocode(query, allow_area=False):
     return None
 
 
-def locate(name, hint):
-    """找一個地點的座標：先用地點搜尋，再用地址查詢；有地區提示時先加上地區查"""
+# 地區提示本身指到的地點（例如「南投地母廟」→ 寶湖宮天地堂）：查到它就代表 Google 只看懂了提示，不是要找的店
+_hint_place_cache = {}
+
+
+def hint_place_id(hint):
+    if hint in _hint_place_cache:
+        return _hint_place_cache[hint]
+    if not use_daily("geo"):
+        return ""
+    r = places_search(hint) or geocode(hint, allow_area=True)
+    pid = r["place_id"] if r else ""
+    if len(_hint_place_cache) > 500:
+        _hint_place_cache.clear()
+    _hint_place_cache[hint] = pid
+    return pid
+
+
+def locate(name, hint, bias=None):
+    """找一個地點的座標：先用地點搜尋，再用地址查詢。
+    hint（地區文字）先加在名稱後面查；查到的剛好是地區本身時不採用，改用名稱再查。
+    bias（中心點）讓 Google 優先找附近的，例如同一天前後的行程。"""
     queries = [f"{name} {hint}", name] if hint and hint not in name else [name]
     for q in queries:
+        # 只有「加了地區」的查詢要排除地區本身；只用名稱查時，查到它就是要找的（例如名稱本身就是地母廟）
+        skip = hint_place_id(hint) if q != name else ""
         if not use_daily("geo"):
             return None, False
-        r = places_search(q)
-        if r:
-            return r, True
-        # 只有「沒加地區、查的本身就是地名」（例如「九份」）時，才接受整個區域的結果
-        r = geocode(q, allow_area=(q == name))
+        r = places_search(q, bias)
+        if r and r["place_id"] and r["place_id"] == skip:
+            r = None
+        if not r:
+            # 只有「沒加地區、查的本身就是地名」（例如「九份」）時，才接受整個區域的結果
+            r = geocode(q, allow_area=(q == name), bias=bias)
+            if r and r["place_id"] and r["place_id"] == skip:
+                r = None
         if r:
             return r, True
     return None, True
@@ -875,6 +922,7 @@ def enrich_locations():
     data = request.get_json(silent=True) or {}
     places = data.get("places", [])[:MAX_PLACES]
     hints = data.get("hints", []) or []
+    biases = data.get("bias", []) or []
 
     if not GOOGLE_KEY:
         return jsonify([])
@@ -886,7 +934,8 @@ def enrich_locations():
             continue
         hint = str(hints[i]).strip() if i < len(hints) and hints[i] else ""
         try:
-            r, quota_left = locate(name, hint)
+            bias = clean_bias(biases[i]) if i < len(biases) and isinstance(biases[i], dict) else None
+            r, quota_left = locate(name, hint, bias)
             if r:
                 results.append({"index": i, "name": name, **r})
             if not quota_left:

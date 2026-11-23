@@ -39,9 +39,8 @@ function areaCounts() {
 
 /** 這個收藏在不在目前行程附近：地區名稱相符、已排進行程，或離行程任一地點 25 公里內 */
 function nearTrip(b, t = tripData) {
-  const region = str(t.meta.region);
   const area = str(b.area);
-  if (region && area && (region.includes(area) || area.includes(region))) return true;
+  if (area && tripRegions(t).some(region => region.includes(area) || area.includes(region))) return true;
   if (t.days.some(d => d.items.some(it => itemMatchesBackup(it, b)))) return true;
   if (b.lat == null) return false;
   return tripCoords(t).some(p => haversine(p.lat, p.lng, b.lat, b.lng) < 25);

@@ -3,7 +3,7 @@
 // 更新網站檔案後，記得把 CACHE 的版本號 +1
 // =========================================
 
-const CACHE = "etrip-v19";
+const CACHE = "etrip-v20";
 const ASSETS = [
   "./",
   "index.html",
@@ -36,7 +36,9 @@ const ASSETS = [
 ];
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  // cache: "reload"：離線用的那份一定直接從伺服器拿最新的，不拿瀏覽器暫存的舊檔
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: "reload" }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", e => {
@@ -58,7 +60,9 @@ self.addEventListener("fetch", e => {
   const key = req.mode === "navigate" ? "index.html" : req;
   e.respondWith(
     Promise.race([
-      fetch(req).then(res => {
+      // no-cache：每次都跟伺服器確認有沒有新版（沒變只回 304，很快），
+      // 避免網站剛更新時，有的檔案拿到新版、有的還是瀏覽器暫存的舊版，新舊混在一起出錯
+      (req.mode === "navigate" ? fetch(req) : fetch(req, { cache: "no-cache" })).then(res => {
         if (res.ok) {
           const copy = res.clone();
           caches.open(CACHE).then(c => c.put(key, copy));
