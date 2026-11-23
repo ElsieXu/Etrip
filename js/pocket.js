@@ -315,7 +315,8 @@ function openBackupSheet(b) {
       </div>
       ${toggleField({ name: "rainy", label: "🌧 下雨也適合去（室內）", checked: b.rainy })}
       ${field({ name: "source", label: "來源連結", value: b.source, type: "url", placeholder: "IG / YouTube / 部落格網址" })}
-      ${field({ name: "note", label: "筆記", value: b.note, type: "textarea", placeholder: "必點菜色、營業時間、要預約嗎…" })}`,
+      ${field({ name: "note", label: "筆記", value: b.note, type: "textarea", placeholder: "必點菜色、營業時間、要預約嗎…" })}
+      ${relocateButtonHTML(b)}`,
     actions: [
       { label: "刪除", value: "delete", variant: "danger" },
       { label: "取消", value: "cancel", variant: "ghost" },
@@ -329,6 +330,7 @@ function openBackupSheet(b) {
         toast(`已刪除「${b.name}」`, { action: { label: "復原", fn: () => { tripData.backups.splice(idx, 0, b); saveTrip(); refresh(); } } });
         return;
       }
+      if (v === "relocate") { relocateTarget(b); return; }
       if (v !== "save") return;
       const name = str(d.name);
       if (!name) return false;

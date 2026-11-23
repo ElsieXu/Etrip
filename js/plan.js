@@ -141,6 +141,7 @@ function openItemSheet(dayIndex, item) {
         const spent = tripData.expenses.filter(e => e.place && e.place === it.text);
         return `<button type="submit" name="_action" value="expense" class="list-btn" formnovalidate>${icon("wallet")}<span><b>記一筆這裡的花費</b><small>${spent.length ? `已記 ${spent.length} 筆，共 ${fmtMoney(sumExpenses(spent).total, "TWD")}` : "例如門票、餐點"}</small></span></button>`;
       })()}
+      ${isNew ? "" : relocateButtonHTML(it)}
       ${isNew ? "" : `
       <details class="review-fields" ${it.rating || it.review || it.done || tripPhase() === "after" ? "open" : ""}>
         <summary>去過之後：評分與心得</summary>
@@ -161,6 +162,7 @@ function openItemSheet(dayIndex, item) {
         setTimeout(() => openExpenseSheet({ dayIndex, place: it.text }), 50);
         return;
       }
+      if (v === "relocate") { relocateTarget(it); return; }
       if (v !== "save") return;
       const text = str(d.text);
       if (!text) return false;
@@ -330,6 +332,81 @@ async function enrichAndSave(targets, { silent = true } = {}) {
   if (found) { saveTrip(); refresh(); }
   if (!silent) toast(found ? `已補上 ${found} 個地點的座標` : "這次沒有找到新的座標");
   return found;
+}
+
+/** 編輯畫面裡的「重新定位」按鈕（行程項目、口袋名單共用） */
+function relocateButtonHTML(t) {
+  const where = t.lat == null ? "目前沒有座標，導航用名稱搜尋" : "距離怪怪的、導航到別的地方時按這裡";
+  return `<button type="submit" name="_action" value="relocate" class="list-btn" formnovalidate>${icon("locate")}<span><b>重新定位</b><small>${where}</small></span></button>`;
+}
+
+/** 重新定位：清掉舊座標再查一次（定位錯了、導航到別的地方時用） */
+async function relocateTarget(t) {
+  const old = { lat: t.lat, lng: t.lng, placeId: t.placeId };
+  Object.assign(t, { lat: null, lng: null, placeId: "" });
+  saveTrip(); refresh();
+  toast("正在重新定位…");
+  const found = await enrichTargets([t], tripData.meta.region).catch(() => 0);
+  saveTrip(); refresh();
+  toast(found ? "已重新定位" : "找不到準確的位置，導航會改用名稱搜尋", {
+    action: { label: "復原", fn: () => { Object.assign(t, old); saveTrip(); refresh(); } }
+  });
+}
+
+// ===== 修正疊在同一點的座標（2026-11-23）=====
+// 舊版補座標查不到店名時，會存成整個縣市或鄉鎮的位置，結果好幾個不同的地點疊在同一點、
+// 距離變 0、導航到錯的地方。每台裝置啟動時檢查一次：不同名字卻座標完全相同的，清掉座標，
+// 等後端是新版（會拒收這種結果）再重新查。清掉之後導航會改用名稱搜尋，所以就算還沒重查也不會導錯。
+const COORD_FIX_BACKEND = "2026-11-23";
+
+function clearStackedCoords() {
+  const groups = new Map();
+  const add = (o, name) => {
+    if (o.lat == null || o.lng == null) return;
+    const k = `${o.lat.toFixed(5)},${o.lng.toFixed(5)}`;
+    if (!groups.has(k)) groups.set(k, { names: new Set(), list: [] });
+    const g = groups.get(k);
+    g.names.add(str(name).toLowerCase());
+    g.list.push(o);
+  };
+  const trips = new Set(library.trips);
+  if (tripData) trips.add(tripData);
+  trips.forEach(t => t.days.forEach(d => d.items.forEach(it => add(it, it.text))));
+  library.backups.forEach(b => add(b, b.name));
+  const cleared = [];
+  for (const g of groups.values()) {
+    if (g.names.size < 2) continue;
+    g.list.forEach(o => { Object.assign(o, { lat: null, lng: null, placeId: "" }); cleared.push(o.id); });
+  }
+  return cleared;
+}
+
+async function fixStackedCoords() {
+  if (DEMO) return;
+  if (!prefs.coordFix) {
+    prefs.coordFix = 1;
+    const cleared = clearStackedCoords();
+    if (cleared.length) { prefs.coordRefetch = cleared; saveTrip(); refresh(); }
+    savePrefs();
+  }
+  const ids = new Set(prefs.coordRefetch || []);
+  if (!ids.size || !navigator.onLine) return;
+  try {
+    const h = await apiRequest("GET", "/health", null, { timeout: 60000 });
+    if (str(h?.version) < COORD_FIX_BACKEND) return;   // 後端還是舊版，下次啟動再試
+  } catch (e) { return; }
+  prefs.coordRefetch = [];
+  savePrefs();
+  let found = 0;
+  const trips = new Set(library.trips);
+  if (tripData) trips.add(tripData);
+  for (const t of trips) {
+    const items = t.days.flatMap(d => d.items).filter(it => ids.has(it.id) && it.lat == null);
+    if (items.length) found += await enrichTargets(items, t.meta.region);
+  }
+  const backups = library.backups.filter(b => ids.has(b.id) && b.lat == null);
+  if (backups.length) found += await enrichTargets(backups, tripData?.meta.region || "");
+  if (found) { saveTrip(); refresh(); }
 }
 
 // ===== 建立一日遊 =====

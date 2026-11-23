@@ -102,7 +102,7 @@ MAINTENANCE.md        後續維護：入口、更新方式、出問題怎麼查�
 |---|---|
 | `AI_PROVIDER` | 建議設 `vertex`：用 Vertex AI，費用算在 Google Cloud 帳單（可以用 AI Pro 送的抵免額），不需要金鑰。也可以設 `gemini`（AI Studio 金鑰）或 `openai` |
 | `GEMINI_API_KEY` | AI Studio 金鑰：`AI_PROVIDER=gemini` 時使用；Vertex 讀不了 YouTube 影片時也會改用它 |
-| `GOOGLE_MAPS_API_KEY` | 補座標（Geocoding API） |
+| `GOOGLE_MAPS_API_KEY` | 補座標（Places API (New) 文字搜尋＋Geocoding API） |
 | `ALLOWED_ORIGINS` | 只允許自己的網站呼叫，例如 `https://elsiexu.github.io`（不設定 = 全部允許，別人可能用掉你的額度） |
 | `GEMINI_MODEL` / `GEMINI_VIDEO_MODEL` | 選填，預設 `gemini-3.5-flash-lite` |
 | `DAILY_AI_LIMIT` / `DAILY_GEO_LIMIT` | 選填，每台機器每天最多幾次 AI 請求 / 座標查詢，預設 20 / 150 |

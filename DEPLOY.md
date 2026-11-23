@@ -120,7 +120,7 @@ gcloud run deploy etrip-api --source . --region asia-east1 --allow-unauthenticat
 
 ## 10. 保護金鑰（建議）
 
-- **Maps 金鑰**：主控台 → API 和服務 → 憑證 → 點金鑰 → API 限制選「Geocoding API」
+- **Maps 金鑰**：主控台 → API 和服務 → 憑證 → 點金鑰 → API 限制勾「Geocoding API」和「Places API (New)」
 - **Gemini 金鑰**：同一個頁面，API 限制選「Generative Language API」
 
 ---

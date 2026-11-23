@@ -104,6 +104,7 @@ function init() {
   // 網站開著時點示範連結（#demo）：重新載入才會切換到示範模式
   window.addEventListener("hashchange", () => { if (location.hash === "#demo") location.reload(); });
   initSync();
+  setTimeout(fixStackedCoords, 1500);   // 修正舊版疊在同一點的座標（每台裝置一次）
 
   // 每分鐘更新倒數；切回網站時如果換日了就重畫
   let lastDay = toISODate(new Date());

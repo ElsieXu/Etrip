@@ -6,7 +6,7 @@ Etrip 後端（Flask，部署在 Google Cloud Run）
 - /extract_url        讀取網址抽出地點；YouTube 影片會直接讓 Gemini 看影片；
                       IG 貼文會讀公開的說明文字，讀不到時請前端改上傳影片或截圖
 - /extract_media      上傳影片或截圖（例如 IG 影片、螢幕錄影），讓 Gemini 看內容找地點
-- /enrich_locations   地點名稱轉座標（Google Geocoding API）
+- /enrich_locations   地點名稱轉座標（先用 Places API 文字搜尋，沒開時用 Geocoding API）
 - /sync               雲端同步（Firestore）：建立同步碼、讀取、儲存、刪除
 - /health             健康檢查 / 提早喚醒
 
@@ -83,7 +83,7 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 SYNC_COLLECTION = os.getenv("SYNC_COLLECTION", "etrip_sync")
 
 # 後端版本：每次修改 server.py 時更新，部署後打開 /health 就能確認是不是新版
-APP_VERSION = "2026-11-16"
+APP_VERSION = "2026-11-23"
 
 MAX_TEXT = 15000        # 送給 AI 的文字上限
 MAX_PLACES = 80         # 一次最多補幾個座標
@@ -782,14 +782,91 @@ def extract_url():
 _session = requests.Session()
 
 
-def geocode(query):
+# 只代表「一整個區域」的結果（國家、縣市、鄉鎮、郵遞區號…）。
+# 查店名查不到時，Google 常常回傳這種結果，存下來會讓好幾個地點疊在同一點、導航到錯的地方，
+# 所以除非查的本來就是地名，一律當作沒找到。
+AREA_TYPES = {
+    "political", "country", "administrative_area_level_1", "administrative_area_level_2",
+    "administrative_area_level_3", "administrative_area_level_4", "administrative_area_level_5",
+    "locality", "sublocality", "sublocality_level_1", "sublocality_level_2", "sublocality_level_3",
+    "sublocality_level_4", "sublocality_level_5", "neighborhood", "colloquial_area",
+    "postal_code", "postal_town", "archipelago", "continent",
+}
+
+
+def is_area_only(types):
+    types = set(types or [])
+    return not types or types <= AREA_TYPES
+
+
+# 地點搜尋（Places API）沒有開啟或金鑰沒有權限時，記下來之後就不再試，直接用地址查詢
+_places_disabled = False
+
+
+def places_search(query):
+    """用 Places API（New）的文字搜尋找店名、景點：比地址查詢準很多"""
+    global _places_disabled
+    if _places_disabled:
+        return None
+    try:
+        res = _session.post(
+            "https://places.googleapis.com/v1/places:searchText",
+            headers={
+                "X-Goog-Api-Key": GOOGLE_KEY,
+                "X-Goog-FieldMask": "places.id,places.location,places.formattedAddress,places.types",
+            },
+            json={"textQuery": query, "languageCode": "zh-TW", "pageSize": 1},
+            timeout=8,
+        )
+    except requests.RequestException as e:
+        print("地點搜尋連線錯誤:", e)
+        return None
+    if res.status_code in (401, 403):
+        _places_disabled = True
+        print("地點搜尋（Places API）無法使用，改用地址查詢:", res.text[:300])
+        return None
+    if not res.ok:
+        print("地點搜尋錯誤:", res.status_code, res.text[:300])
+        return None
+    for p in res.json().get("places") or []:
+        loc = p.get("location") or {}
+        if loc.get("latitude") is None or is_area_only(p.get("types")):
+            continue
+        return {"lat": loc["latitude"], "lng": loc["longitude"],
+                "place_id": p.get("id", ""), "address": p.get("formattedAddress", "")}
+    return None
+
+
+def geocode(query, allow_area=False):
+    """地址查詢（Geocoding API）。allow_area=False 時，只查到整個區域就當作沒找到"""
     res = _session.get(
         "https://maps.googleapis.com/maps/api/geocode/json",
         params={"address": query, "key": GOOGLE_KEY, "language": "zh-TW"},
         timeout=8,
     ).json()
-    results = res.get("results") or []
-    return results[0] if results else None
+    for r in res.get("results") or []:
+        if not allow_area and is_area_only(r.get("types")):
+            continue
+        loc = r["geometry"]["location"]
+        return {"lat": loc["lat"], "lng": loc["lng"],
+                "place_id": r.get("place_id", ""), "address": r.get("formatted_address", "")}
+    return None
+
+
+def locate(name, hint):
+    """找一個地點的座標：先用地點搜尋，再用地址查詢；有地區提示時先加上地區查"""
+    queries = [f"{name} {hint}", name] if hint and hint not in name else [name]
+    for q in queries:
+        if not use_daily("geo"):
+            return None, False
+        r = places_search(q)
+        if r:
+            return r, True
+        # 只有「沒加地區、查的本身就是地名」（例如「九份」）時，才接受整個區域的結果
+        r = geocode(q, allow_area=(q == name))
+        if r:
+            return r, True
+    return None, True
 
 
 @app.route("/enrich_locations", methods=["POST"])
@@ -809,26 +886,11 @@ def enrich_locations():
             continue
         hint = str(hints[i]).strip() if i < len(hints) and hints[i] else ""
         try:
-            r = None
-            # 有地區提示時先加上地區查，查不到再只用名稱查
-            if hint and hint not in name:
-                if not use_daily("geo"):
-                    break
-                r = geocode(f"{name} {hint}")
-            if not r:
-                if not use_daily("geo"):
-                    break
-                r = geocode(name)
+            r, quota_left = locate(name, hint)
             if r:
-                loc = r["geometry"]["location"]
-                results.append({
-                    "index": i,
-                    "name": name,
-                    "lat": loc["lat"],
-                    "lng": loc["lng"],
-                    "place_id": r.get("place_id", ""),
-                    "address": r.get("formatted_address", ""),
-                })
+                results.append({"index": i, "name": name, **r})
+            if not quota_left:
+                break
         except Exception as e:  # noqa: BLE001
             print("地點解析錯誤:", name, e)
 
