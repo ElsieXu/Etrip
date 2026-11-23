@@ -71,12 +71,44 @@ function dayCardHTML(day, i) {
       </div>
     </header>
     <div class="day-body" ${open ? "" : "hidden"}>
+      ${anchorRowHTML(day, i, "start")}
       <div class="day-items" data-day="${i}">
         ${day.items.map(it => itemRowHTML(it, i)).join("")}
       </div>
+      ${anchorRowHTML(day, i, "end")}
       <button class="add-row" data-action="item-add" data-day="${i}">${icon("plus")}新增行程</button>
     </div>
   </article>`;
+}
+
+/**
+ * 每天最上面「從 X 出發」、最下面「回到 Y」（淡色、不能拖曳）。
+ * 第一天沒設定出發地時，顯示一個小連結提醒可以設定。
+ */
+function anchorRowHTML(day, i, which) {
+  const a = dayAnchorsOf(tripData, i)[which];
+  if (!a) {
+    if (which === "start" && i === 0 && !tripData.meta.startPlace && !tripData.meta.endPlace) {
+      return `<button class="anchor-setup" data-action="trip-places">${icon("plus")}設定從哪出發、回到哪裡</button>`;
+    }
+    return "";
+  }
+  const stops = day.items.filter(x => x.lat != null);
+  const near = which === "start" ? stops[0] : stops[stops.length - 1];
+  const d = near && a.lat != null ? haversine(a.lat, a.lng, near.lat, near.lng) : null;
+  const km = d != null && d <= FAR_KM ? formatKm(d) : "";   // 出國時「從家到第一站 1700 km」沒有意義，不顯示
+  const label = which === "start" ? `從 ${a.title} 出發` : `回到 ${a.title}`;
+  const edit = a.kind === "hotel" ? `data-action="hotel-edit" data-id="${a.obj.id}"` : `data-action="trip-places"`;
+  return `
+  <div class="anchor-row ${which}">
+    <span class="anchor-emoji" aria-hidden="true">${a.kind === "hotel" ? "🏨" : "🏠"}</span>
+    <button class="anchor-main" ${edit}>
+      <span class="anchor-text">${esc(label)}</span>
+      ${km ? `<span class="anchor-km">${which === "start" ? "到第一站" : "最後一站過去"} ${km}</span>` : ""}
+      ${a.lat == null ? `<span class="anchor-km">還沒有位置，導航用名稱搜尋</span>` : ""}
+    </button>
+    <a class="icon-btn" href="${esc(anchorNavUrl(a))}" target="_blank" rel="noopener" title="導航" aria-label="導航到 ${esc(a.title)}">${icon("nav")}</a>
+  </div>`;
 }
 
 function itemRowHTML(it, dayIndex) {
@@ -269,6 +301,23 @@ document.addEventListener("click", e => {
   if (e.target.closest("[data-route-more='1']")) toast(`Google 地圖一次最多 ${ROUTE_MAX} 個點，已先放前 ${ROUTE_MAX} 個`);
 });
 
+const FAR_KM = 200;   // 出發點／回程點離這天的行程超過這個距離（例如出國），排順路時不參考
+
+/** 排順路要用的出發點、回程點：沒有位置、或離這天行程太遠（出國從家出發）的不算 */
+function sortAnchors(i) {
+  const a = dayAnchorsOf(tripData, i);
+  const stops = tripData.days[i].items.filter(x => x.lat != null);
+  const ok = x => x && x.lat != null && stops.some(s => haversine(x.lat, x.lng, s.lat, s.lng) <= FAR_KM);
+  return { start: ok(a.start) ? a.start : null, end: ok(a.end) ? a.end : null };
+}
+
+function sortHint(i) {
+  const { start, end } = sortAnchors(i);
+  const s = start && start.lat != null ? `從「${start.title}」開始排` : "第一站不動";
+  const e = end && end.lat != null ? `，最後接到「${end.title}」` : "";
+  return `用直線距離重排（${s}${e}），可以復原`;
+}
+
 ACTIONS["day-menu"] = el => {
   const i = +el.dataset.day;
   const day = tripData.days[i];
@@ -278,7 +327,7 @@ ACTIONS["day-menu"] = el => {
       ${field({ name: "title", label: "這天的標題", value: day.title, placeholder: "例：Day 1 那霸市區" })}
       <div class="sheet-list">
         <button type="submit" name="_action" value="copy-other" class="list-btn">${icon("copy")}<span><b>加到其他行程</b><small>挑幾個地點複製到另一個行程（例如併進下次的多日旅行）</small></span></button>
-        <button type="submit" name="_action" value="sort" class="list-btn">${icon("route")}<span><b>依順路重新排序</b><small>用直線距離重排（第一站不動），可以復原</small></span></button>
+        <button type="submit" name="_action" value="sort" class="list-btn">${icon("route")}<span><b>依順路重新排序</b><small>${sortHint(i)}</small></span></button>
         ${isDayTrip() ? "" : `<button type="submit" name="_action" value="up" class="list-btn" ${i === 0 ? "disabled" : ""}>${icon("chevron", "rot180")}<span><b>往前移一天</b></span></button>
         <button type="submit" name="_action" value="down" class="list-btn" ${i === tripData.days.length - 1 ? "disabled" : ""}>${icon("chevron")}<span><b>往後移一天</b></span></button>`}
         <button type="submit" name="_action" value="delete" class="list-btn danger">${icon("trash")}<span><b>刪除這一天</b><small>${day.items.length} 個行程會一起刪除，可以復原</small></span></button>
@@ -290,7 +339,8 @@ ACTIONS["day-menu"] = el => {
       if (v === "copy-other") { setTimeout(() => openCopyToTrip(i), 50); return; }
       if (v === "sort") {
         const before = day.items.slice();
-        day.items = sortByDistance(day.items);
+        const anchors = sortAnchors(i);
+        day.items = sortByDistance(day.items, anchors.start, anchors.end);
         const missing = day.items.filter(x => x.lat == null).length;
         saveTrip(); refresh();
         toast(missing ? `已重新排序（${missing} 個沒有座標的放在最後）` : "已依順路重新排序", {
@@ -331,8 +381,25 @@ function addBackupToDay(backup, dayIndex, position) {
   });
 }
 
+/** 住宿、常用地點還沒有位置的，背景補上（每個地點這次開啟只試一次，不浪費查詢額度） */
+const _anchorTried = new Set();
+function locateMissingAnchors() {
+  if (DEMO) return;
+  for (const h of tripData.hotels) {
+    if (h.lat != null || !(h.address || h.name) || _anchorTried.has(h.id)) continue;
+    _anchorTried.add(h.id);
+    locateHotel(h);
+  }
+  for (const p of library.places) {
+    if (p.lat != null || !p.name || _anchorTried.has(p.id)) continue;
+    _anchorTried.add(p.id);
+    locatePlace(p);
+  }
+}
+
 /** 補座標後存檔（背景執行，不擋畫面） */
 async function enrichAndSave(targets, { silent = true } = {}) {
+  locateMissingAnchors();
   if (!targets.some(t => t.lat == null)) return 0;
   const found = await enrichTargets(targets, tripData);
   if (found) { saveTrip(); refresh(); }

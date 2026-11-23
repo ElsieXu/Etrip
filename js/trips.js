@@ -89,6 +89,9 @@ function openTripSettings({ isNew = false } = {}) {
             ...Object.entries(CURRENCIES).filter(([k]) => k !== "TWD").map(([k, c]) => ({ value: k, label: `${c.name} ${k}` }))] })}
       </div>
       <p class="field-hint">國外行程會顯示匯率，記帳也能用當地幣別。</p>
+      ${isNew ? "" : `<div class="sheet-list">
+        <button type="submit" name="_action" value="places" class="list-btn" formnovalidate>${icon("route")}<span><b>從哪出發、回到哪裡</b><small>${esc(tripPlacesSummary(tripData))}</small></span></button>
+      </div>`}
       ${isNew ? "" : field({ name: "albumUrl", label: "相簿連結", value: m.albumUrl, type: "url", placeholder: "Google 相簿分享網址", hint: "旅行回顧時可以一鍵打開照片" })}
       ${saved && !isNew ? `<div class="sheet-list">
         <button type="submit" name="_action" value="duplicate" class="list-btn">${icon("copy")}<span><b>再去一次</b><small>複製成新行程：日期和打勾清掉，心得留著參考</small></span></button>
@@ -96,6 +99,7 @@ function openTripSettings({ isNew = false } = {}) {
       </div>` : ""}`,
     actions: [{ label: "取消", value: "cancel", variant: "ghost" }, { label: isNew ? "建立" : "儲存", value: "save", variant: "primary" }],
     onAction(v, d) {
+      if (v === "places") { setTimeout(() => openTripPlaces(), 50); return; }
       if (v === "duplicate") {
         const copy = duplicateTrip(tripData);
         todaySel = null;
@@ -227,3 +231,121 @@ ACTIONS["trip-new-blank"] = () => {
   if (currentView !== "plan") setView("plan"); else refresh();
   openTripSettings({ isNew: true });
 };
+
+// ===== 出發地／回家（常用地點）=====
+
+function tripPlacesSummary(t) {
+  const find = id => library.places.find(p => p.id === id);
+  const s = find(t.meta.startPlace), e = find(t.meta.endPlace);
+  if (!s && !e) return "還沒設定：設定後第一天從這裡開始排順路";
+  if (s && s === e) return `從「${placeTitle(s)}」出發，最後回到這裡`;
+  return [s ? `從「${placeTitle(s)}」出發` : "", e ? `回到「${placeTitle(e)}」` : ""].filter(Boolean).join("，");
+}
+// 常用地點存在整個資料庫（library.places），會跟著同步碼到其他裝置。
+// 建議填附近的地標（例如捷運站），不必填門牌。
+
+function placeOptions(empty) {
+  return [{ value: "", label: empty }, ...library.places.map(p => ({ value: p.id, label: placeTitle(p) + (p.label && p.name !== p.label ? `（${p.name}）` : "") }))];
+}
+
+function openTripPlaces() {
+  const m = tripData.meta;
+  const list = library.places.map(p => `
+    <button type="submit" name="_action" value="edit:${esc(p.id)}" class="list-btn" formnovalidate>${icon("locate")}<span><b>${esc(placeTitle(p))}</b>
+      <small>${esc(p.label && p.label !== p.name ? p.name + "・" : "")}${p.lat != null ? esc(p.address || "已定位") : "還沒有位置"}</small></span></button>`).join("");
+  openSheet({
+    title: "從哪出發、回到哪裡",
+    body: `
+      ${library.places.length ? `
+      <div class="field-row">
+        ${field({ name: "startPlace", label: "出發地", type: "select", value: m.startPlace, options: placeOptions("不設定") })}
+        ${field({ name: "endPlace", label: "最後回到", type: "select",
+          value: m.endPlace && m.endPlace === m.startPlace ? "same" : m.endPlace,
+          options: [{ value: "same", label: "跟出發地一樣" }, ...placeOptions("不設定")] })}
+      </div>
+      <p class="field-hint">第一天從出發地開始排，最後一天接回這裡。中間幾天會用住宿（在住宿裡勾「住哪幾晚」）。</p>` :
+      `<p class="muted small">先新增一個常用地點（例如「家」「集合點」），每趟行程就能選從哪出發、回到哪。</p>`}
+      <span class="field-label">常用地點</span>
+      <div class="sheet-list">
+        ${list}
+        <button type="submit" name="_action" value="add" class="list-btn" formnovalidate>${icon("plus")}<span><b>新增常用地點</b><small>家、公司、集合點…會跟著同步碼到其他裝置</small></span></button>
+      </div>`,
+    actions: [{ label: "取消", value: "cancel", variant: "ghost" }, ...(library.places.length ? [{ label: "儲存", value: "save", variant: "primary" }] : [])],
+    onAction(v, d) {
+      if (v === "cancel") return;
+      const keep = () => {
+        if (!library.places.length) return;
+        const ids = new Set(library.places.map(p => p.id));
+        m.startPlace = ids.has(d.startPlace) ? d.startPlace : "";
+        m.endPlace = d.endPlace === "same" ? m.startPlace : ids.has(d.endPlace) ? d.endPlace : "";
+      };
+      if (v === "add" || v.startsWith("edit:")) {
+        keep(); saveTrip();
+        const p = v === "add" ? null : library.places.find(x => x.id === v.slice(5));
+        setTimeout(() => openPlaceSheet(p), 50);
+        return;
+      }
+      keep();
+      saveTrip(); refresh();
+      toast("已更新出發地／回家");
+    }
+  });
+}
+ACTIONS["trip-places"] = () => openTripPlaces();
+
+async function locatePlace(p) {
+  const r = await locateText(p.name, null).catch(() => null);
+  if (!library.places.includes(p)) return false;
+  if (r) Object.assign(p, { lat: r.lat, lng: r.lng, placeId: r.placeId, address: r.foundAddress });
+  saveTrip(); refresh();
+  return !!r;
+}
+
+function openPlaceSheet(place) {
+  const isNew = !place;
+  const p = place || normalizePlace({});
+  openSheet({
+    title: isNew ? "新增常用地點" : "編輯常用地點",
+    body: `
+      ${field({ name: "label", label: "叫它什麼", value: p.label, placeholder: "例：家、公司、集合點", autofocus: true })}
+      ${field({ name: "name", label: "地標或地址", value: p.name, required: true, placeholder: "例：土城捷運站",
+        hint: "建議填附近的地標（捷運站、路口、公園），不用填門牌：資料會存到雲端，排路線用附近地標就夠準了" })}
+      ${p.lat != null ? `<p class="field-hint">目前定位：${esc(p.address || `${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}`)}</p>` : ""}`,
+    actions: [
+      ...(isNew ? [] : [{ label: "刪除", value: "delete", variant: "danger" }]),
+      { label: "取消", value: "cancel", variant: "ghost" },
+      { label: "儲存", value: "save", variant: "primary" }
+    ],
+    onAction(v, d) {
+      const back = () => setTimeout(() => openTripPlaces(), 50);
+      if (v === "cancel") { back(); return; }
+      if (v === "delete") {
+        const idx = library.places.indexOf(p);
+        library.places.splice(idx, 1);
+        // 用到這個地點的行程一起清掉，不留下找不到的 id
+        const used = library.trips.filter(t => t.meta.startPlace === p.id || t.meta.endPlace === p.id);
+        used.forEach(t => { if (t.meta.startPlace === p.id) t.meta.startPlace = ""; if (t.meta.endPlace === p.id) t.meta.endPlace = ""; });
+        saveTrip(); refresh();
+        toast(`已刪除「${placeTitle(p)}」`);
+        back();
+        return;
+      }
+      if (v !== "save") return;
+      const moved = str(d.name) !== p.name;
+      p.label = str(d.label);
+      p.name = str(d.name);
+      if (moved) Object.assign(p, { lat: null, lng: null, placeId: "", address: "" });
+      if (isNew) {
+        library.places.push(p);
+        // 第一個常用地點：這趟行程直接用它當出發地和回程
+        if (!tripData.meta.startPlace && !tripData.meta.endPlace) { tripData.meta.startPlace = p.id; tripData.meta.endPlace = p.id; }
+      }
+      saveTrip(); refresh();
+      back();
+      if (p.lat == null) {
+        toast("正在查位置…");
+        locatePlace(p).then(ok => toast(ok ? `「${placeTitle(p)}」定位在：${p.address || "已找到"}` : `找不到「${p.name}」的位置，換個更明確的地標試試`));
+      }
+    }
+  });
+}

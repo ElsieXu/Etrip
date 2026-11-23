@@ -254,13 +254,17 @@ function centerOf(pts) {
  * 不再把目的地文字硬加在每個店名後面：目的地填成景點（例如「南投地母廟」）時，Google 會直接回傳那個景點。
  */
 async function biasFor(t, trip, pending) {
+  if (!trip) return null;
   const known = x => x.lat != null && !pending.has(x);
-  if (trip && "text" in t) {
-    for (const d of trip.days) {
+  // 住宿也算參考點（前一晚住的、當晚住的）；家不算：從家出發的一日遊，地點通常離家很遠
+  const hotelAnchor = a => (a && a.kind === "hotel" && a.lat != null ? a : null);
+  if ("text" in t) {
+    for (const [di, d] of trip.days.entries()) {
       const i = d.items.indexOf(t);
       if (i < 0) continue;
-      const prev = d.items.slice(0, i).reverse().find(known);
-      const next = d.items.slice(i + 1).find(known);
+      const anchors = dayAnchorsOf(trip, di);
+      const prev = d.items.slice(0, i).reverse().find(known) || hotelAnchor(anchors.start);
+      const next = d.items.slice(i + 1).find(known) || hotelAnchor(anchors.end);
       const pts = [prev, next].filter(Boolean);
       if (pts.length === 2) {
         const km = haversine(prev.lat, prev.lng, next.lat, next.lng);
@@ -270,7 +274,7 @@ async function biasFor(t, trip, pending) {
       break;
     }
   }
-  const pts = trip ? trip.days.flatMap(d => d.items).filter(known) : [];
+  const pts = trip.days.flatMap(d => d.items).concat(trip.hotels).filter(known);
   if (pts.length) return { ...centerOf(pts), r: 50000 };
   const g = await regionCenter(trip);
   return g ? { lat: g.lat, lng: g.lng, r: 50000 } : null;
@@ -304,6 +308,7 @@ async function enrichTargets(targets, trip = tripData) {
         t.lat = num(r.lat);
         t.lng = num(r.lng);
         if (r.place_id) t.placeId = r.place_id;
+        if ("foundAddress" in t) t.foundAddress = str(r.address);
         // 口袋名單沒填地區時，用地址自動補上
         if ("area" in t && !t.area && r.address) t.area = areaFromAddress(r.address);
         pending.delete(t);   // 後面的地點可以拿它當參考
@@ -314,22 +319,56 @@ async function enrichTargets(targets, trip = tripData) {
   return found;
 }
 
-/** 依順路重新排序（最近鄰）：第一站固定，沒有座標的放到最後 */
-function sortByDistance(items) {
-  if (items.length <= 2) return items.slice();
-  const withCoord = items.filter(i => i.lat != null);
-  const without = items.filter(i => i.lat == null);
-  if (withCoord.length <= 2) return items.slice();
-  const sorted = [withCoord[0]];
-  const remaining = withCoord.slice(1);
+/** 查一段文字的位置（住宿地址、常用地點用）。查不到回傳 null */
+async function locateText(query, trip = null) {
+  const probe = { name: str(query), lat: null, lng: null, placeId: "", foundAddress: "" };
+  if (!probe.name) return null;
+  await enrichTargets([probe], trip);
+  return probe.lat != null ? probe : null;
+}
+
+/**
+ * 依順路重新排序：
+ * - 有出發點（前一晚的住宿、家）：從出發點開始排，第一站也會跟著調整
+ * - 沒有出發點：第一站固定
+ * - 有終點（當晚的住宿、回家）：最後一站會盡量靠近終點
+ * 先用「最近的下一站」排出初稿，再把交叉繞路的段落反轉（2-opt）。沒有座標的放到最後。
+ */
+function sortByDistance(items, start = null, end = null) {
+  const has = p => p && p.lat != null;
+  if (!has(start)) start = null;
+  if (!has(end)) end = null;
+  const withCoord = items.filter(has);
+  const without = items.filter(i => !has(i));
+  const fixedFirst = start ? 0 : 1;                       // 沒有出發點時第一站不動
+  if (withCoord.length - fixedFirst < 2) return items.slice();
+  const dist = (a, b) => haversine(a.lat, a.lng, b.lat, b.lng);
+
+  const route = start ? [] : [withCoord[0]];
+  const remaining = withCoord.slice(fixedFirst);
+  let cur = start || withCoord[0];
   while (remaining.length) {
-    const last = sorted[sorted.length - 1];
     let best = 0, bestD = Infinity;
-    remaining.forEach((it, i) => {
-      const d = haversine(last.lat, last.lng, it.lat, it.lng);
-      if (d < bestD) { bestD = d; best = i; }
-    });
-    sorted.push(remaining.splice(best, 1)[0]);
+    remaining.forEach((it, i) => { const d = dist(cur, it); if (d < bestD) { bestD = d; best = i; } });
+    cur = remaining.splice(best, 1)[0];
+    route.push(cur);
   }
-  return sorted.concat(without);
+
+  const total = r => {
+    let s = start ? dist(start, r[0]) : 0;
+    for (let i = 1; i < r.length; i++) s += dist(r[i - 1], r[i]);
+    return s + (end ? dist(r[r.length - 1], end) : 0);
+  };
+  let best = total(route), improved = true, rounds = 0;
+  while (improved && rounds++ < 50) {
+    improved = false;
+    for (let i = fixedFirst; i < route.length - 1; i++) {
+      for (let j = i + 1; j < route.length; j++) {
+        const cand = route.slice(0, i).concat(route.slice(i, j + 1).reverse(), route.slice(j + 1));
+        const t = total(cand);
+        if (t < best - 1e-9) { route.splice(0, route.length, ...cand); best = t; improved = true; }
+      }
+    }
+  }
+  return route.concat(without);
 }

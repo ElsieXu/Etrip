@@ -1109,3 +1109,31 @@ a.list-btn { text-decoration: none; }
 .nearby-search a.chip { text-decoration: none; }
 .nearby-custom { display: flex; gap: 6px; align-items: center; }
 .nearby-custom input { flex: 1; min-width: 0; }
+
+/* 每天的出發／回程列（前一晚住宿、家 → 當晚住宿、回家） */
+.anchor-row {
+  display: flex; align-items: center; gap: 4px;
+  border: 1.5px dashed var(--border); border-radius: 12px;
+  padding: 2px 4px 2px 10px; color: var(--muted);
+}
+.anchor-row.start { margin-bottom: 6px; }
+.anchor-row.end { margin-top: 6px; }
+.anchor-emoji { flex-shrink: 0; }
+.anchor-main {
+  flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px;
+  padding: 8px 4px; background: none; border: 0; cursor: pointer; color: inherit; text-align: left; font: inherit;
+}
+.anchor-text { font-weight: 600; color: var(--text-2); overflow-wrap: anywhere; }
+.anchor-km { font-size: 12px; }
+.anchor-setup {
+  display: flex; align-items: center; gap: 4px; margin: 0 0 6px auto;
+  background: none; border: 0; padding: 4px 2px; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer;
+}
+.anchor-setup:hover { color: var(--primary); }
+.anchor-setup .i { width: 14px; height: 14px; }
+
+/* 住宿：住哪幾晚 */
+.nights-field { border: 0; padding: 0; margin: 0 0 14px; }
+.nights-list { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 4px 0 2px; }
+.night-check { display: flex; align-items: center; gap: 6px; min-height: 36px; cursor: pointer; font-weight: 600; }
+.night-check small { margin-left: 4px; color: var(--muted); font-weight: 400; }
