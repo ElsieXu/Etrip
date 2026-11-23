@@ -35,6 +35,8 @@ function emptyTrip() {
       title: "", region: "", startDate: "", albumUrl: "", demo: false,
       abroad: null,      // true 國外 / false 國內 / null 自動判斷
       currency: "",      // 當地幣別，例如 JPY（空白 = 自動判斷）
+      startPlace: "",    // 從哪裡出發（常用地點的 id）
+      endPlace: "",      // 最後回到哪裡（常用地點的 id）
       createdAt: Date.now(), updatedAt: 0, exportedAt: 0
     },
     flight: { depart: "", return: "" },          // 去程 / 回程交通（航班、高鐵、自駕都可）
@@ -47,7 +49,8 @@ function emptyTrip() {
 }
 
 function emptyLibrary() {
-  return { version: SCHEMA_VERSION, currentTripId: "", trips: [], backups: [], deleted: {}, templates: {} };
+  // places：常用地點（家、公司、集合點），每趟行程可以選從哪出發、回到哪
+  return { version: SCHEMA_VERSION, currentTripId: "", trips: [], backups: [], places: [], deleted: {}, templates: {} };
 }
 
 function normCategory(c) {
@@ -114,8 +117,66 @@ function normalizeHotel(h) {
     phone: str(h.phone),
     dates: str(h.dates || h.checkin),
     code: str(h.code),
-    note: str(h.note)
+    note: str(h.note),
+    nights: Array.isArray(h.nights) ? h.nights.map(str).filter(Boolean) : [],   // 住哪幾晚（那天的 id）
+    lat: num(h.lat),
+    lng: num(h.lng),
+    placeId: str(h.placeId)
   };
+}
+
+/** 常用地點：name 是拿去查位置的文字（建議填附近地標，不必填門牌） */
+function normalizePlace(p) {
+  p = p || {};
+  return {
+    id: str(p.id) || uid(),
+    label: str(p.label),
+    name: str(p.name),
+    address: str(p.address),       // 查到的地址，讓使用者確認位置對不對
+    lat: num(p.lat),
+    lng: num(p.lng),
+    placeId: str(p.placeId),
+    createdAt: num(p.createdAt) || Date.now(),
+    updatedAt: num(p.updatedAt) || 0
+  };
+}
+
+function placeTitle(p) { return p ? (p.label || p.name) : ""; }
+
+/**
+ * 從「入住期間」文字推算住哪幾晚（回傳那幾天的 id）。
+ * 看得懂：「11/20–11/22」「2025/11/20-22」「11/20 入住 2 晚」「11/20～11/22（2 晚）」
+ */
+function inferNights(text, t) {
+  text = str(text);
+  if (!text || !t.days.length) return [];
+  const startYear = +(dayDateOf(t, 0) || toISODate(new Date())).slice(0, 4);
+  const toIso = (y, m, d) => {
+    if (!(m >= 1 && m <= 12 && d >= 1 && d <= 31)) return "";
+    if (!y) {
+      // 沒寫年份：選離行程第一天最近的那一年（跨年行程也對）
+      const base = dayDateOf(t, 0) || toISODate(new Date());
+      y = [startYear - 1, startYear, startYear + 1].sort((a, b) =>
+        Math.abs(Date.parse(`${a}-${pad2(m)}-${pad2(d)}`) - Date.parse(base)) -
+        Math.abs(Date.parse(`${b}-${pad2(m)}-${pad2(d)}`) - Date.parse(base)))[0];
+    }
+    return `${y}-${pad2(m)}-${pad2(d)}`;
+  };
+  const dates = [];
+  const re = /(?:(\d{4})\s*[\/\-.年]\s*)?(\d{1,2})\s*[\/\-.月]\s*(\d{1,2})\s*日?(?:\s*[–—\-~～至到]\s*(\d{1,2})(?![\/\-.月\d]))?/g;
+  let m;
+  while ((m = re.exec(text))) {
+    const a = toIso(+m[1] || 0, +m[2], +m[3]);
+    if (a) dates.push(a);
+    if (m[4]) { const b = toIso(+m[1] || 0, +m[2], +m[4]); if (b && b > a) dates.push(b); }
+  }
+  if (!dates.length) return [];
+  const checkIn = dates[0];
+  let checkOut = dates.length > 1 ? dates[dates.length - 1] : "";
+  const n = text.match(/(\d+)\s*晚/);
+  if (!checkOut && n) checkOut = addDays(checkIn, +n[1]);
+  if (!checkOut || checkOut <= checkIn) checkOut = addDays(checkIn, 1);
+  return t.days.filter((d, i) => { const iso = dayDateOf(t, i); return iso && iso >= checkIn && iso < checkOut; }).map(d => d.id);
 }
 
 /** 把任何版本的單一行程（含舊版 v1 / v2）整理成目前的格式（不含口袋名單） */
@@ -140,10 +201,8 @@ function normalizeTrip(raw) {
   t.flight.depart = str(raw.flight?.depart);
   t.flight.return = str(raw.flight?.return);
 
-  // v1 用過 hotel（物件或陣列）與 hotels 兩種欄位
-  let hotels = raw.hotels ?? raw.hotel ?? [];
-  if (!Array.isArray(hotels)) hotels = [hotels];
-  t.hotels = hotels.map(normalizeHotel).filter(h => h.name || h.address);
+  t.meta.startPlace = str(meta.startPlace);
+  t.meta.endPlace = str(meta.endPlace);
 
   const info = raw.info || {};
   t.info = { codes: str(info.codes), emergency: str(info.emergency), notes: str(info.notes) };
@@ -155,10 +214,22 @@ function normalizeTrip(raw) {
     items: (Array.isArray(d?.items) ? d.items : []).map(normalizeItem).filter(x => x.text)
   }));
 
+  // v1 用過 hotel（物件或陣列）與 hotels 兩種欄位
+  let hotels = raw.hotels ?? raw.hotel ?? [];
+  if (!Array.isArray(hotels)) hotels = [hotels];
+  const hotelPairs = hotels.map(h => [normalizeHotel(h), Array.isArray(h?.nights)]).filter(([n]) => n.name || n.address);
+  t.hotels = hotelPairs.map(([n]) => n);
+
   t.expenses = (Array.isArray(raw.expenses) ? raw.expenses : []).map(normalizeExpense).filter(e => e.amount > 0);
   t.packing = (Array.isArray(raw.packing) ? raw.packing : []).map(normalizePackItem).filter(p => p.text);
 
   if (!t.meta.startDate) t.meta.startDate = inferStartDate(t);
+  // 住哪幾晚：舊資料（沒有勾過）用「入住期間」文字自動推算；只留還存在的那幾天
+  const dayIds = new Set(t.days.map(d => d.id));
+  hotelPairs.forEach(([h, had]) => {
+    if (!had) h.nights = inferNights(h.dates, t);
+    h.nights = h.nights.filter(id => dayIds.has(id));
+  });
   return t;
 }
 
@@ -233,6 +304,7 @@ function normalizeLibrary(raw) {
   if (Array.isArray(raw.trips)) {
     lib.trips = raw.trips.map(normalizeTrip);
     lib.backups = normalizeBackups(raw.backups);
+    lib.places = (Array.isArray(raw.places) ? raw.places : []).map(normalizePlace).filter(p => p.name);
     lib.currentTripId = str(raw.currentTripId);
     for (const [id, ts] of Object.entries(raw.deleted || {})) if (num(ts)) lib.deleted[id] = num(ts);
     lib.templates = normalizeTemplates(raw.templates);
@@ -295,13 +367,14 @@ function attachTrip(t) {
 }
 
 function tripSig(t) { return JSON.stringify({ ...t, meta: { ...t.meta, updatedAt: 0, exportedAt: 0 } }); }
-function backupSig(b) { return JSON.stringify({ ...b, updatedAt: 0 }); }
+function backupSig(b) { return JSON.stringify({ ...b, updatedAt: 0 }); }   // 常用地點也用這個
 function templatesSig(t) { return JSON.stringify(Object.fromEntries(Object.entries(t || {}).map(([k, v]) => [k, v.items]))); }
 
 function rememberSignatures() {
   _sigs = new Map();
   library.trips.forEach(t => _sigs.set(t.id, tripSig(t)));
   library.backups.forEach(b => _sigs.set(b.id, backupSig(b)));
+  (library.places || []).forEach(p => _sigs.set(p.id, backupSig(p)));
   _sigs.set("__templates", templatesSig(library.templates));
 }
 
@@ -328,6 +401,12 @@ function saveTrip() {
     alive.add(b.id);
     const s = backupSig(b);
     if (_sigs.get(b.id) !== s) { b.updatedAt = now; _sigs.set(b.id, s); changed = true; }
+  }
+  library.places = library.places || [];
+  for (const p of library.places) {
+    alive.add(p.id);
+    const s = backupSig(p);
+    if (_sigs.get(p.id) !== s) { p.updatedAt = now; _sigs.set(p.id, s); changed = true; }
   }
   library.templates = library.templates || {};
   alive.add("__templates");
@@ -452,12 +531,14 @@ function duplicateTrip(src) {
   copy.meta.updatedAt = 0;
   copy.meta.exportedAt = 0;
   copy.flight = { depart: "", return: "" };
+  const newIds = new Map();
   copy.days.forEach(d => {
-    d.id = uid();
+    newIds.set(d.id, uid());
+    d.id = newIds.get(d.id);
     d.date = "";
     d.items.forEach(it => { it.id = uid(); it.done = false; });
   });
-  copy.hotels.forEach(h => { h.id = uid(); h.code = ""; h.dates = ""; });
+  copy.hotels.forEach(h => { h.id = uid(); h.code = ""; h.dates = ""; h.nights = (h.nights || []).map(id => newIds.get(id)).filter(Boolean); });
   copy.expenses = [];
   (copy.packing || []).forEach(p => { p.id = uid(); p.done = false; });
   return createTrip(copy);
@@ -494,6 +575,8 @@ function mergeLibraries(local, remote) {
     if (!prev || (b.updatedAt || 0) > (prev.updatedAt || 0)) byName.set(k, b);
   }
   out.backups = [...byName.values()].sort((a, b) => a.createdAt - b.createdAt);
+  out.places = pick([...(remote.places || []), ...(local.places || [])], p => p.updatedAt || 0)
+    .sort((a, b) => a.createdAt - b.createdAt);
 
   out.templates = { ...(remote.templates || {}) };
   for (const [k, v] of Object.entries(local.templates || {})) {
@@ -533,6 +616,33 @@ function dayDateOf(t, i) {
   if (!d) return "";
   if (d.date) return d.date;
   return t.meta.startDate ? addDays(t.meta.startDate, i) : "";
+}
+
+/**
+ * 第 i 天從哪出發、晚上回到哪：
+ * 出發 = 前一晚的住宿；第一天是行程設定的「出發地」
+ * 回到 = 當晚的住宿；最後一天是「回到哪裡」
+ * 回傳 { start, end }，各是 { kind: "hotel" | "home", title, obj, lat, lng } 或 null
+ */
+function dayAnchorsOf(t, i) {
+  const place = id => id && (library.places || []).find(p => p.id === id);
+  const hotelOn = day => day && t.hotels.find(h => h.nights.includes(day.id));
+  const asAnchor = (x, kind) => x ? {
+    kind, obj: x, lat: x.lat, lng: x.lng,
+    title: kind === "hotel" ? (x.name || x.address) : placeTitle(x)
+  } : null;
+  const prevHotel = i > 0 ? hotelOn(t.days[i - 1]) : null;
+  const tonight = hotelOn(t.days[i]);
+  return {
+    start: prevHotel ? asAnchor(prevHotel, "hotel") : i === 0 ? asAnchor(place(t.meta.startPlace), "home") : null,
+    end: tonight ? asAnchor(tonight, "hotel") : i === t.days.length - 1 ? asAnchor(place(t.meta.endPlace), "home") : null
+  };
+}
+
+/** 導航到出發點／回程點：住宿優先用地址 */
+function anchorNavUrl(a) {
+  const o = a.obj;
+  return mapsNavUrl(a.kind === "hotel" ? { name: o.address || o.name, placeId: o.placeId } : { name: o.name, placeId: o.placeId });
 }
 
 /** 第 i 天的日期：優先用該天自己的日期，否則由出發日推算 */

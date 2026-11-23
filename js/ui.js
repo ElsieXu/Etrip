@@ -244,7 +244,7 @@ function infoCardHTML({ compact = false } = {}) {
     <div class="hotel">
       <button class="hotel-main" data-action="hotel-edit" data-id="${h.id}">
         <span class="hotel-name">${esc(h.name || "（未命名住宿）")}</span>
-        ${h.dates ? `<span class="hotel-sub">${esc(h.dates)}</span>` : ""}
+        ${h.dates || h.nights.length ? `<span class="hotel-sub">${esc(h.dates || nightsLabel(h))}</span>` : ""}
         ${h.address && !compact ? `<span class="hotel-sub">${esc(h.address)}</span>` : ""}
       </button>
       <div class="hotel-actions">
@@ -307,6 +307,36 @@ ACTIONS["info-edit"] = () => {
   });
 };
 
+/** 「住 2 晚（Day 1、Day 2）」 */
+function nightsLabel(h) {
+  const idx = h.nights.map(id => tripData.days.findIndex(d => d.id === id)).filter(i => i >= 0).sort((a, b) => a - b);
+  return idx.length ? `住 ${idx.length} 晚（${idx.map(i => `Day ${i + 1}`).join("、")}）` : "";
+}
+
+/** 住宿編輯畫面的「住哪幾晚」勾選（一日遊不顯示） */
+function nightsFieldHTML(h) {
+  if (tripData.days.length < 2) return "";
+  const last = tripData.days.length - 1;
+  return `
+  <fieldset class="nights-field">
+    <legend class="field-label">住哪幾晚</legend>
+    <div class="nights-list">
+      ${tripData.days.map((d, i) => i === last && !h.nights.includes(d.id) ? "" : `
+        <label class="night-check"><input type="checkbox" name="night_${esc(d.id)}" ${h.nights.includes(d.id) ? "checked" : ""}>
+          <span>Day ${i + 1} 晚${dayDate(i) ? `<small>${formatDateLabel(dayDate(i))}</small>` : ""}</span></label>`).join("")}
+    </div>
+    <span class="field-hint">勾了之後，隔天的行程會從這裡出發，「依順路重新排序」也會用到。沒勾的話，有填入住期間會自動幫你勾。</span>
+  </fieldset>`;
+}
+
+/** 住宿的位置：用地址（沒有就用名稱）查，背景執行 */
+async function locateHotel(h) {
+  const r = await locateText(h.address || h.name, tripData).catch(() => null);
+  if (!r || !tripData.hotels.includes(h)) return;
+  Object.assign(h, { lat: r.lat, lng: r.lng, placeId: r.placeId });
+  saveTrip(); refresh();
+}
+
 function openHotelSheet(hotel) {
   const isNew = !hotel;
   const h = hotel || normalizeHotel({});
@@ -315,6 +345,7 @@ function openHotelSheet(hotel) {
     body: `
       ${field({ name: "name", label: "名稱", value: h.name, required: true, autofocus: true })}
       ${field({ name: "dates", label: "入住期間", value: h.dates, placeholder: "例：11/20–11/22（2 晚）" })}
+      ${nightsFieldHTML(h)}
       ${field({ name: "address", label: "地址", value: h.address, hint: "導航會用地址，比名稱更準確" })}
       ${field({ name: "phone", label: "電話", value: h.phone, type: "tel" })}
       ${field({ name: "code", label: "訂房代號", value: h.code })}
@@ -333,12 +364,21 @@ function openHotelSheet(hotel) {
         return;
       }
       if (v !== "save") return;
+      const moved = str(d.name) !== h.name || str(d.address) !== h.address;
+      const datesChanged = str(d.dates) !== h.dates;
       Object.assign(h, {
         name: str(d.name), dates: str(d.dates), address: str(d.address),
         phone: str(d.phone), code: str(d.code), note: str(d.note)
       });
+      if (tripData.days.length >= 2) {
+        h.nights = tripData.days.filter(day => d[`night_${day.id}`]).map(day => day.id);
+        // 沒勾、但填了（或改了）入住期間：自動推算
+        if (!h.nights.length && h.dates && (isNew || datesChanged)) h.nights = inferNights(h.dates, tripData);
+      }
+      if (moved) Object.assign(h, { lat: null, lng: null, placeId: "" });
       if (isNew) tripData.hotels.push(h);
       saveTrip(); refresh();
+      if (h.lat == null) locateHotel(h);
     }
   });
 }
