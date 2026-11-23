@@ -104,7 +104,7 @@ function anchorRowHTML(day, i, which) {
     <span class="anchor-emoji" aria-hidden="true">${a.kind === "hotel" ? "🏨" : "🏠"}</span>
     <button class="anchor-main" ${edit}>
       <span class="anchor-text">${esc(label)}</span>
-      ${km ? `<span class="anchor-km">${which === "start" ? "到第一站" : "最後一站過去"} ${km}</span>` : ""}
+      ${km ? `<span class="anchor-km">${which === "start" ? "到第一站" : "最後一站過去"}直線 ${km}</span>` : ""}
       ${a.lat == null ? `<span class="anchor-km">還沒有位置，導航用名稱搜尋</span>` : ""}
     </button>
     <a class="icon-btn" href="${esc(anchorNavUrl(a))}" target="_blank" rel="noopener" title="導航" aria-label="導航到 ${esc(a.title)}">${icon("nav")}</a>
