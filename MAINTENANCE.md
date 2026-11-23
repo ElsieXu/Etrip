@@ -161,7 +161,7 @@ gcloud run services update etrip-api --region asia-east1 --update-env-vars "AI_P
   - 用到 **100%**：後端自己先停用 AI，顯示「這個月的 AI 額度用完了，下個月 1 號會恢復」
   - 這是估算，和 Google 帳單會有一點差距。Vertex AI 的實際花費看「帳單 → 報表」，AI Studio 的看 Spend 頁面
   - **Vertex AI 沒有像 AI Studio 那樣的自動停用上限**，所以這個每月預算就是 Vertex AI 的主要上限
-- 補座標每天 150 次 × 最多 2 台 × 30 天 = 9,000 次，低於 Google Maps 每月 1 萬次免費額度，**永遠 0 元**
+- 補座標每天 150 次 × 最多 2 台 × 30 天 = 9,000 次。Geocoding API 每月免費 1 萬次；地點搜尋（Places API Text Search Pro）每月免費 5,000 次，所以要加上 ④ 的每日 150 次上限（150 × 30 = 4,500），才能保證 **0 元**
 
 要調整時（例如使用者變多）：
 
@@ -183,12 +183,30 @@ gcloud run services update etrip-api --region asia-east1 --max-instances=2
 2. 上方切到 **配額與系統限制**，在篩選框輸入 `per day`
 3. 找到「每天的請求數」（GenerateContent requests per day）那一列 → 右邊 ⋮ → **編輯配額** → 填 `60` → 送出
 4. 同樣到 **Geocoding API** 的配額，把每天的請求數改成 `350`
+5. 同樣到 **Places API (New)** 的配額，找「Text Search 每天的請求數」，改成 `150`
 
 > 配額的名稱偶爾會改，找不到時把畫面截圖給 Claude 看就好。調低配額不用 Google 審核，會立刻生效。
 
 **再加上：帳單預算提醒**（只寄信、不會停用）：主控台 → 帳單 → 預算與快訊 → 建立預算，金額填 NT$350（或 US$11）。
 
-### 8. 同步碼外流了
+### 8. 開啟地點搜尋（設一次就好，2026-11-23 起）
+
+補座標原本只用「地址查詢」（Geocoding API），查店名常常只查到整個縣市或鄉鎮，好幾個地點疊在同一點、導航到錯的地方。
+現在後端會先用「地點搜尋」（Places API (New)）找店名，比較準。**沒開的話後端會自動改回地址查詢，不會壞掉，只是比較不準。**
+
+1. 主控台 → **API 和服務** → **程式庫** → 搜尋 `Places API (New)` → **啟用**
+2. **API 和服務** → **憑證** → 點 Maps 金鑰 → API 限制裡**加勾** `Places API (New)`（`Geocoding API` 保留）→ 儲存
+3. 到第 7 點 ④ 把 Places API 的每日上限設成 `150`
+
+在 Cloud Shell 也可以一行開啟（第 2、3 步還是要在主控台做）：
+
+```bash
+gcloud services enable places.googleapis.com
+```
+
+改好之後 5 分鐘內會生效。如果之前後端已經發現沒權限，要重新部署一次（或等它自己休眠重開）才會再試地點搜尋。
+
+### 9. 同步碼外流了
 
 到 Etrip 的 **工具 → 雲端同步 → 同步碼外流了？**，可以選：
 
