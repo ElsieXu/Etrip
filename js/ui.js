@@ -204,6 +204,7 @@ function emptyStateHTML() {
       <button class="btn primary" data-action="go" data-view="tools" data-focus="#rawInput">${icon("sparkles")}貼上行程讓 AI 整理</button>
       <button class="btn" data-action="daytrip-new">${icon("sun")}建立一日遊</button>
       <button class="btn" data-action="trip-new-blank">${icon("calendar")}手動建立多日行程</button>
+      ${library.trips.includes(tripData) ? `<button class="btn ghost" data-action="trip-delete">${icon("trash")}刪除這個空白行程（${esc(tripData.meta.title || "未命名行程")}）</button>` : ""}
       ${others ? `<button class="btn ghost" data-action="trip-list">${icon("calendar")}切換到其他行程（${others} 個）</button>` : ""}
       <button class="btn ghost" data-action="go" data-view="pocket">${icon("bookmark")}先收藏口袋名單</button>
       ${others ? "" : `<button class="btn ghost" data-action="demo-enter">${icon("sparkles")}先看看範例（示範模式）</button>`}

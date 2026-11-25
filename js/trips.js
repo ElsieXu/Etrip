@@ -32,10 +32,14 @@ function openTripList() {
           const current = t === tripData;
           const sub = [tripRangeLabel(t)];
           if (phase === "after") sub.push(`去了 ${s.done} 個地方${s.avg ? ` · ⭐${s.avg.toFixed(1)}` : ""}`);
-          return `<button type="submit" name="_action" value="open:${t.id}" class="list-btn ${current ? "current" : ""}">
-            ${icon(t.days.length === 1 ? "sun" : phase === "after" ? "check" : "calendar")}
-            <span><b>${esc(t.meta.title || "未命名行程")}${current ? ' <span class="pill primary">目前</span>' : ""}</b><small>${esc(sub.join(" · "))}</small></span>
-          </button>`;
+          const name = t.meta.title || "未命名行程";
+          return `<div class="trip-row">
+            <button type="submit" name="_action" value="open:${t.id}" class="list-btn ${current ? "current" : ""}">
+              ${icon(t.days.length === 1 ? "sun" : phase === "after" ? "check" : "calendar")}
+              <span><b>${esc(name)}${current ? ' <span class="pill primary">目前</span>' : ""}</b><small>${esc(sub.join(" · "))}</small></span>
+            </button>
+            <button type="submit" name="_action" value="del:${t.id}" class="icon-btn trip-del" formnovalidate title="刪除「${esc(name)}」" aria-label="刪除「${esc(name)}」">${icon("trash")}</button>
+          </div>`;
         }).join("")}
       </div>`;
   }).join("");
@@ -51,6 +55,12 @@ function openTripList() {
       ${groups || `<p class="muted">還沒有任何行程。</p>`}`,
     actions: [{ label: "關閉", value: "cancel", variant: "ghost" }],
     onAction(v) {
+      if (v.startsWith("del:")) {
+        deleteTripWithUndo(v.slice(4));
+        // 刪完留在清單，方便一次清掉好幾個
+        if (library.trips.length) setTimeout(openTripList, 50);
+        return;
+      }
       if (v.startsWith("open:")) {
         selectTrip(v.slice(5));
         todaySel = null;
@@ -68,6 +78,22 @@ function openTripList() {
   });
 }
 ACTIONS["trip-list"] = () => openTripList();
+
+/** 刪除行程（可以按復原）。刪的不是目前這個行程時，畫面留在原本的行程 */
+function deleteTripWithUndo(id) {
+  const keep = tripData.id !== id ? tripData.id : null;
+  const info = deleteTrip(id);
+  if (!info) return null;
+  todaySel = null;
+  refresh();
+  toast(`已刪除「${info.trip.meta.title || "行程"}」`, { action: { label: "復原", fn: () => {
+    undoDeleteTrip(info);
+    selectTrip(keep || info.trip.id);
+    refresh();
+  } } });
+  return info;
+}
+ACTIONS["trip-delete"] = () => deleteTripWithUndo(tripData.id);
 
 // ===== 行程設定 =====
 
@@ -108,14 +134,7 @@ function openTripSettings({ isNew = false } = {}) {
         toast(`已建立「${copy.meta.title}」，設定新的出發日吧`);
         return;
       }
-      if (v === "delete") {
-        const info = deleteTrip(tripData.id);
-        if (!info) return;
-        todaySel = null;
-        refresh();
-        toast(`已刪除「${info.trip.meta.title || "行程"}」`, { action: { label: "復原", fn: () => { undoDeleteTrip(info); refresh(); } } });
-        return;
-      }
+      if (v === "delete") { deleteTripWithUndo(tripData.id); return; }
       if (v !== "save") {
         if (isNew && !library.trips.includes(tripData)) { selectTrip(library.currentTripId); refresh(); }
         return;
