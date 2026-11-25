@@ -28,7 +28,10 @@ function renderPlan() {
       ${tipHTML("plan")}
       <div class="section-head">
         <h2>${isDayTrip() ? "行程" : "每日行程"}</h2>
-        ${isDayTrip() ? "" : `<button class="btn sm ghost" data-action="days-expand-all" data-open="${allOpen ? 0 : 1}">${allOpen ? "全部收合" : "全部展開"}</button>`}
+        <div class="section-actions">
+          ${isDayTrip() ? "" : `<button class="btn sm ghost" data-action="days-expand-all" data-open="${allOpen ? 0 : 1}">${allOpen ? "全部收合" : "全部展開"}</button>`}
+          ${library.trips.includes(tripData) ? `<button class="btn sm ghost" data-action="trip-settings" title="改名稱、日期，或刪除這個行程">${icon("settings")}行程設定</button>` : ""}
+        </div>
       </div>
       ${tripData.days.map((d, i) => dayCardHTML(d, i)).join("")}
       ${isDayTrip()

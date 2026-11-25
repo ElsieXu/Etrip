@@ -1137,3 +1137,10 @@ a.list-btn { text-decoration: none; }
 .nights-list { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 4px 0 2px; }
 .night-check { display: flex; align-items: center; gap: 6px; min-height: 36px; cursor: pointer; font-weight: 600; }
 .night-check small { margin-left: 4px; color: var(--muted); font-weight: 400; }
+
+/* 我的行程：每一列右邊的刪除鍵 */
+.trip-row { display: flex; align-items: center; gap: 6px; }
+.trip-row .list-btn { flex: 1; min-width: 0; }
+.trip-row .trip-del { flex: none; color: var(--muted); }
+.trip-row .trip-del:hover { color: var(--danger); }
+.section-actions { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
